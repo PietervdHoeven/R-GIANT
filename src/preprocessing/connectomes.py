@@ -619,10 +619,15 @@ def build_connectomes(patient_id: str, session_id: str, base_path: str = "data/"
         logger.exception("Step 11 failed: Plotting multiview connectomes")
         raise
 
-    np.savez_compressed(
-        f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_As.npz",
-        **multiview_connectomes
-    )
+    try:
+        logger.info("Step 12: Saving adjacency matrices to intermediate data")
+        np.savez_compressed(
+            f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_As.npz",
+            **multiview_connectomes
+        )
+    except Exception:
+        logger.exception("Step 12 failed: Saving adjacency matrices to intermediate data")
+        raise
 
     logger.info(f"Pipeline completed for patient {patient_id} | session {session_id} in {time.time() - start_time:.2f} seconds.")
 
