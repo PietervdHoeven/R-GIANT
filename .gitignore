@@ -1,0 +1,36 @@
+# Python / build artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.ipynb_checkpoints/
+.venv/
+env/
+venv/
+
+# Logs
+logs/
+!logs/.gitkeep
+!logs/cleaning/.gitkeep
+!logs/connectomes/.gitkeep
+!logs/graphs/.gitkeep
+!logs/nodes/.gitkeep
+!logs/labels/.gitkeep
+
+# Data - keep structure, ignore contents
+data/*
+!data/.gitkeep
+!data/labels.csv
+data/raw/*
+!data/raw/.gitkeep
+data/intermediate/*
+!data/intermediate/.gitkeep
+data/final/*
+!data/final/.gitkeep
+
+packed_data/*
+!packed_data/.gitkeep
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+~$*
