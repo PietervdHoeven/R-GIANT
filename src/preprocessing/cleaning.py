@@ -1,6 +1,7 @@
 import nibabel as nib
 import numpy as np
 import ants
+import os
 import shutil
 import time
 import datetime
@@ -244,7 +245,7 @@ def skullstrip_img(in_path: str, out_path: str, device: str = "cuda") -> nib.Nif
     """
     # Construct the HD-BET command with input, output, and device flags
     hd_bet_cmd = f"hd-bet -i {in_path} -o {out_path} -device {device}"
-    print(f"Running skullstripping command: {hd_bet_cmd}")
+    #print(f"Running skullstripping command: {hd_bet_cmd}")
 
     # Record the start time for performance logging
     start_time = time.time()
@@ -531,23 +532,27 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
     start_time = time.time()
     logger.info(f"Starting DWI cleaning pipeline for patient {patient_id} | Session {session_id}")
 
+    # Create the directory structure for the patient and session if it doesn't exist yet
+    os.makedirs(f"{base_path}raw/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}intermediate/{patient_id}_{session_id}", exist_ok=True)
+
     paths = {
-        "dwi": f"{base_path}{patient_id}_{session_id}_dwi.nii.gz",
-        "denoised_dwi": f"{base_path}{patient_id}_{session_id}_dwi_denoised.nii.gz",
-        "denoised_mc_dwi": f"{base_path}{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
-        "corrected_dwi": f"{base_path}{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "bval": f"{base_path}{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_path}{patient_id}_{session_id}_dwi.bvec",
-        "rotated_bvec": f"{base_path}{patient_id}_{session_id}_dwi_rotated.bvec",
-        "smri": f"{base_path}{patient_id}_{session_id}_brain.mgz",
-        "parc": f"{base_path}{patient_id}_{session_id}_aparc+aseg.mgz",
-        "resampled_smri": f"{base_path}{patient_id}_{session_id}_smri_resampled.nii.gz",
-        "downsampled_smri": f"{base_path}{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "downsampled_parc": f"{base_path}{patient_id}_{session_id}_parc_downsampled.nii.gz",
-        "denoised_b0": f"{base_path}{patient_id}_{session_id}_b0_denoised.nii.gz",
-        "denoised_brain_b0": f"{base_path}{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
-        "denoised_brain_upsampled_b0": f"{base_path}{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
-        "b0_to_smri": f"{base_path}{patient_id}_{session_id}_b0_to_smri.nii.gz"
+        "dwi": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
+        "denoised_dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
+        "denoised_mc_dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
+        "corrected_dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "bval": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
+        "rotated_bvec": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
+        "smri": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_brain.mgz",
+        "parc": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_aparc+aseg.mgz",
+        "resampled_smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
+        "downsampled_smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "downsampled_parc": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "denoised_b0": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
+        "denoised_brain_b0": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
+        "denoised_brain_upsampled_b0": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
+        "b0_to_smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz"
     }
 
     try:
@@ -671,5 +676,5 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = f"logs/cleaning_pipeline/{timestamp}.log"
-    set_verbosity(verbose=True, log_file=log_file)
-    run_cleaning_pipeline(patient_id="0001", session_id="0757")
+    set_verbosity(verbose=True)#, log_file=log_file)
+    run_cleaning_pipeline(patient_id="0001", session_id="0757", base_path="C:/Users/piete/Documents/Projects/R-GIANT/data/")

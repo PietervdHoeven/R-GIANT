@@ -1,6 +1,7 @@
 import time
 import datetime
 import logging
+import os
 import numpy as np
 import nibabel as nib
 import matplotlib.pyplot as plt
@@ -479,13 +480,17 @@ def build_connectomes(patient_id: str, session_id: str, base_path: str = "data/"
     logger.info(f"Starting connectome build for patient {patient_id} | Session {session_id}")
     start_time = time.time()
 
+    # Create the directory structure for the patient and session if it doesn't exist yet
+    os.makedirs(f"{base_path}raw/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}intermediate/{patient_id}_{session_id}", exist_ok=True)
+
     # Define paths to input files
     paths = {
-        "dwi": f"{base_path}{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "bval": f"{base_path}{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_path}{patient_id}_{session_id}_dwi_rotated.bvec",
-        "smri": f"{base_path}{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "smri_parc": f"{base_path}{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "bval": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
+        "smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "smri_parc": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
     }
 
     # Freesurfer-based labels for white matter (used as seed mask)
@@ -614,15 +619,20 @@ def build_connectomes(patient_id: str, session_id: str, base_path: str = "data/"
         logger.exception("Step 11 failed: Plotting multiview connectomes")
         raise
 
-    logger.info(f"Pipeline completed for patient {patient_id} | session {session_id} in {time.time() - start_time:.2f} seconds.")
+    np.savez_compressed(
+        f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_As.npz",
+        **multiview_connectomes
+    )
 
+    logger.info(f"Pipeline completed for patient {patient_id} | session {session_id} in {time.time() - start_time:.2f} seconds.")
 
 
 def main():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = f"logs/connectome_pipeline/{timestamp}.log"
-    set_verbosity(verbose=True, log_file=log_file)
-    build_connectomes(patient_id="0001", session_id="0757")
+    set_verbosity(verbose=True)#, log_file=log_file)
+    build_connectomes(patient_id="0001", session_id="0757", base_path="C:/Users/piete/Documents/Projects/R-GIANT/data/")
+
 
 if __name__ == "__main__":
     main()
