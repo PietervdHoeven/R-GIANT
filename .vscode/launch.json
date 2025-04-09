@@ -1,0 +1,41 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Run main.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "src.main",
+        "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run nodes.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "src.preprocessing.nodes",
+        "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run connectomes.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "src.preprocessing.connectomes",
+        "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run cleaning.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "src.preprocessing.cleaning",
+        "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run graphs.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "src.preprocessing.graphs",
+        "cwd": "${workspaceFolder}"
+      },
+    ]
+  }
+  

@@ -1,0 +1,60 @@
+{
+    "fluid_labels_metadata": {
+        "4": "Left-Lateral-Ventricle",
+        "43": "Right-Lateral-Ventricle",
+        "5": "Left-Inf-Lat-Vent",
+        "44": "Right-Inf-Lat-Vent",
+        "14": "3rd-Ventricle",
+        "15": "4th-Ventricle",
+        "72": "5th-Ventricle (if present)",
+        "24": "CSF (cerebrospinal fluid — general region)",
+        "31": "Left-Choroid-Plexus",
+        "63": "Right-Choroid-Plexus",
+        "30": "Left-Vessel",
+        "62": "Right-Vessel",
+        "80": "non-WM-hypointensities",
+        "81": "Left-non-WM-hypointensities",
+        "82": "Right-non-WM-hypointensities",
+        "85": "Optic-Chiasm"
+    },
+    "fluid_labels": [
+        4, 43, 5, 44, 14, 15, 72, 24, 31, 63, 30, 62, 80, 81, 82, 85
+    ],
+    "wm_labels_metadata": {
+        "2": "Left-Cerebral-White-Matter",
+        "41": "Right-Cerebral-White-Matter",
+        "7": "Left-Cerebellum-White-Matter",
+        "46": "Right-Cerebellum-White-Matter",
+        "77": "WM-hypointensities",
+        "251": "Corpus-Callosum-Posterior",
+        "252": "Corpus-Callosum-Mid-Posterior",
+        "253": "Corpus-Callosum-Central",
+        "254": "Corpus-Callosum-Mid-Anterior",
+        "255": "Corpus-Callosum-Anterior",
+        "10": "Left-Thalamus-Proper",
+        "49": "Right-Thalamus-Proper",
+        "28": "Left-VentralDC",
+        "60": "Right-VentralDC",
+        "16": "Brain-Stem"
+    },
+    "wm_labels": [
+        2, 41, 7, 46, 77, 251, 252, 253, 254, 255, 10, 49, 28, 60, 16
+    ],
+    "excl_labels": [
+        2, 41, 7, 46, 77, 251, 252, 253, 254, 255, 1000, 2000
+    ],
+    "excl_labels_metadata": {
+        "2": "Left-Cerebral-White-Matter",
+        "41": "Right-Cerebral-White-Matter",
+        "7": "Left-Cerebellum-White-Matter",
+        "46": "Right-Cerebellum-White-Matter",
+        "77": "WM-hypointensities",
+        "251": "Corpus-Callosum-Posterior",
+        "252": "Corpus-Callosum-Mid-Posterior",
+        "253": "Corpus-Callosum-Central",
+        "254": "Corpus-Callosum-Mid-Anterior",
+        "255": "Corpus-Callosum-Anterior",
+        "1000": "lh-unkown-ctx",
+        "2000": "rh-unkown-ctx"
+    }
+}

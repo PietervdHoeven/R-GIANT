@@ -1,5 +1,5 @@
 import numpy as np
-from utils.mappings import load_parcellation_mappings
+from src.preprocessing.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
 
 def parse_aseg_stats(aseg_path: str):
     """
@@ -150,34 +150,51 @@ def extract_node_features(
         patient_id: str,
         session_id: str,
         base_dir: str = "C:/Users/piete/Documents/Projects/R-GIANT/data/",
+        fs2reduced: dict = None,
+        ctx_names2reduced: dict = None,
+        fluid_labels: dict = None
 ):
-    
-    FLUID_LABELS = [
-        4,   # Left-Lateral-Ventricle
-        43,  # Right-Lateral-Ventricle
-        5,   # Left-Inf-Lat-Vent
-        44,  # Right-Inf-Lat-Vent
-        14,  # 3rd-Ventricle
-        15,  # 4th-Ventricle
-        72,  # 5th-Ventricle (if present)
-        
-        24,  # CSF (cerebrospinal fluid — general region)
-        
-        31,  # Left-Choroid-Plexus
-        63,  # Right-Choroid-Plexus
-        
-        30,  # Left-Vessel
-        62,  # Right-Vessel
-        
-        80,  # non-WM-hypointensities
-        81,  # Left-non-WM-hypointensities
-        82,  # Right-non-WM-hypointensities
+    """
+    Extract node features from FreeSurfer segmentation stats and save them to a numpy file.
 
-        85   # Optic-Chiasm
-    ]
-        
+    This function processes FreeSurfer segmentation statistics to extract features for brain regions
+    and encodes them into a node feature matrix. The features include sub-cortical and cortical
+    properties such as volume, surface area, thickness, and curvature. The resulting matrix is saved
+    as a `.npy` file for further analysis.
+
+    Parameters:
+        patient_id (str): The ID of the patient (e.g., "0001").
+        session_id (str): The session ID for the patient (e.g., "0757").
+        base_dir (str): The base directory where the data is stored. Defaults to
+                        "C:/Users/piete/Documents/Projects/R-GIANT/data/".
+        fs2reduced (dict): A mapping from FreeSurfer segment IDs to reduced IDs for sub-cortical regions.
+        ctx_names2reduced (dict): A mapping from FreeSurfer cortical structure names to reduced IDs.
+        fluid_labels (dict): A dictionary of fluid-related labels to identify fluid compartments.
+
+    Returns:
+        None: The function saves the node feature matrix as a `.npy` file in the intermediate directory.
+
+    Outputs:
+        - A numpy file containing the node feature matrix is saved to:
+          `{base_dir}/intermediate/{patient_id}_{session_id}_node_features.npy`.
+        - The matrix is printed to the console for verification.
+
+    Node Feature Matrix (X):
+        - Shape: (n_nodes, 9)
+        - Columns:
+            0: is_sub_ctx (1 if sub-cortical structure, 0 otherwise)
+            1: is_ctx (1 if cortical structure, 0 otherwise)
+            2: is_fluid (1 if fluid compartment, 0 otherwise)
+            3: Volume_mm3 (normalized by eTIV)
+            4: SurfArea (surface area)
+            5: GrayVol (gray matter volume)
+            6: ThickAvg (average thickness)
+            7: ThickStd (thickness standard deviation)
+            8: MeanCurv (mean curvature)
+
+    """
     # Build empty feature matrix with shape (n_nodes, n_features)
-    n_nodes = len(load_parcellation_mappings()['fs2reduced'])
+    n_nodes = len(fs2reduced)
     n_features = 9 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv
     X = np.zeros((n_nodes, n_features))
 
@@ -188,7 +205,7 @@ def extract_node_features(
     aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{base_dir}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_aseg.stats")
 
     # Encode the sub cortical features from the parsed siub cortical segmentation stats into the node feature matrix X
-    X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs2reduced=mappings["fs2reduced"], fluid_labels=FLUID_LABELS)
+    X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs2reduced=mappings["fs2reduced"], fluid_labels=fluid_labels)
 
     # Extract aparc stats by parsing lh.aparc.stats and rh.aparc.stats
     aparc_stats = parse_aparc_stats(
@@ -197,7 +214,7 @@ def extract_node_features(
     )
 
     # Encode the cortical features from the parsed cortical parcellation stats into the node feature matrix X
-    X = encode_ctx_features(X, aparc_stats, names2reduced=mappings["ctx_names2reduced"])
+    X = encode_ctx_features(X, aparc_stats, names2reduced=ctx_names2reduced)
 
     # Save the node feature matrix X to a numpy file
     np.save(f"{base_dir}intermediate/{patient_id}_{session_id}_node_features.npy", X)
@@ -207,12 +224,18 @@ def extract_node_features(
 
 
 
-
 # Example usage:
 if __name__ == "__main__":
+    # Load mappings and special labels
+    mappings = load_parcellation_mappings()
+    special_labels = load_special_fs_labels()
+    # Extract node features
     extract_node_features(
         patient_id="0001",
         session_id="0757",
-        base_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/"
+        base_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/",
+        fs2reduced=mappings["fs2reduced"],
+        ctx_names2reduced=mappings["ctx_names2reduced"],
+        fluid_labels=special_labels["fluid_labels"]
     )
 

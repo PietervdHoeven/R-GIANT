@@ -5,7 +5,7 @@ import os
 import numpy as np
 import nibabel as nib
 import matplotlib.pyplot as plt
-from utils.mappings import load_parcellation_mappings
+from src.preprocessing.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
 from scipy.ndimage import binary_dilation
 from dipy.core.gradients import gradient_table
 from dipy.io.gradients import read_bvals_bvecs
@@ -288,7 +288,6 @@ def preprocess_parcellation(fs_parcellation: np.ndarray) -> tuple[np.ndarray, di
 
     Args:
         fs_parcellation (np.ndarray): 3D volume with original parcellation labels (e.g., aparc+aseg).
-        excluded_labels (list[int]): List of labels to remove (set to 0).
 
     Returns:
         Tuple containing:
@@ -507,6 +506,8 @@ def build_connectomes(patient_id: str, session_id: str, base_path: str = "data/"
         60,  # Right-VentralDC
         16   # Brain-Stem
     ]
+
+    wm_labels = load_special_fs_labels()['wm_labels']
 
     # Labels to exclude based on fluid compartments
     FLUID_LABELS = [
