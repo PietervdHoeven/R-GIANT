@@ -26,9 +26,14 @@ data/intermediate/*
 !data/intermediate/.gitkeep
 data/final/*
 !data/final/.gitkeep
+plots/*
+!plots/.gitkeep
+plots/connectivity_matrices/*
+!plots/connectivity_matrices/.gitkeep
 
 packed_data/*
 !packed_data/.gitkeep
+
 
 # OS / Editor files
 .DS_Store
