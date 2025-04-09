@@ -18,41 +18,42 @@ from HD_BET.hd_bet_prediction import get_hdbet_predictor, hdbet_predict
 import logging
 
 
-# Create a logger
-logger = logging.getLogger(__name__)
-logger.propagate = False  # Prevent duplicate logs if used in Jupyter or elsewhere
 
-
-
-def set_verbosity(verbose: bool = True, log_file: str = None):
+def setup_debug_logger(patient_id, session_id):
     """
-    Sets the logging level and optionally writes logs to a file.
-
-    Args:
-        verbose (bool): If True, shows detailed DEBUG/INFO logs; otherwise WARNING+.
-        log_file (str, optional): Path to a .log file to write logs to.
+    Setup a logger for debugging.
     """
-    # Clear existing handlers to avoid duplicate logs
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    logger = logging.getLogger(f"debug_cleaning_{patient_id}_{session_id}")
+    logger.setLevel(logging.INFO)
+    
+    # Ensure logger does not propagate to avoid duplicate log entries when a master logger is present.
+    logger.propagate = False  
 
-    level = logging.DEBUG if verbose else logging.WARNING
-    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', "%H:%M:%S")
-
-    # Console logging
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    # Optional file logging
-    if log_file:
-        import os
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        file_handler = logging.FileHandler(log_file, mode='w')
-        file_handler.setFormatter(formatter)
+    # Create the directory if it doesn't exist.
+    os.makedirs("logs/cleaning", exist_ok=True)
+    
+    # Create a timestamped log file name.
+    timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    log_filename = f"{patient_id}_{session_id}_{timestamp}.log"
+    log_filepath = os.path.join("logs/cleaning", log_filename)
+    
+    # Setup file handler.
+    file_handler = logging.FileHandler(log_filepath)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    
+    # Check if handlers already exist; if not, add file and stream handlers
+    if not logger.handlers:
         logger.addHandler(file_handler)
-
-    logger.setLevel(level)
+        
+        # Optional: add a stream handler for console output
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+    
+    return logger
 
 
 
@@ -527,33 +528,50 @@ def apply_bvec_rotations(
 
 
 
-def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "data/", save: bool = True) -> None:
-    import time
+def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "data/", save: bool = True, external_logger = None) -> None:
+
+    # Setup logger
+    if external_logger:
+        logger = external_logger
+    else:
+        logger = setup_debug_logger(patient_id, session_id)
+
     start_time = time.time()
     logger.info(f"Starting DWI cleaning pipeline for patient {patient_id} | Session {session_id}")
 
     # Create the directory structure for the patient and session if it doesn't exist yet
-    os.makedirs(f"{base_path}raw/{patient_id}_{session_id}", exist_ok=True)
-    os.makedirs(f"{base_path}intermediate/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}raw_mri/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}temp_mri/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}clean_mri/{patient_id}_{session_id}", exist_ok=True)
 
     paths = {
-        "dwi": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
-        "denoised_dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
-        "denoised_mc_dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
-        "corrected_dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "bval": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
-        "rotated_bvec": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
-        "smri": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_brain.mgz",
-        "parc": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_aparc+aseg.mgz",
-        "resampled_smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
-        "downsampled_smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "downsampled_parc": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
-        "denoised_b0": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
-        "denoised_brain_b0": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
-        "denoised_brain_upsampled_b0": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
-        "b0_to_smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz"
+        "dwi": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
+        "denoised_dwi": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
+        "denoised_mc_dwi": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
+        "bval": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
+        "smri": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_brain.mgz",
+        "parc": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_aparc+aseg.mgz",
+
+        "resampled_smri": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
+        "downsampled_smri": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "denoised_b0": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
+        "denoised_brain_b0": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
+        "denoised_brain_upsampled_b0": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
+        "b0_to_smri": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz",
+
+        "corrected_dwi": f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "downsampled_parc": f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "rotated_bvec": f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec"
     }
+
+    # Move the bvals file to the clean_mri directory
+    try:
+        logger.info("Moving bvals file to clean_mri directory")
+        shutil.copy(paths["bval"], f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval")
+    except Exception:
+        logger.exception("Failed to move bvals file to clean_mri directory")
+        return
 
     try:
         logger.info("Step 0: Loading input data")
@@ -674,7 +692,4 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
 
 # Example use case for debugging or running directly
 if __name__ == "__main__":
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = f"logs/cleaning_pipeline/{timestamp}.log"
-    set_verbosity(verbose=True)#, log_file=log_file)
-    run_cleaning_pipeline(patient_id="0001", session_id="0757", base_path="C:/Users/piete/Documents/Projects/R-GIANT/data/")
+    run_cleaning_pipeline(patient_id="0001", session_id="0757")

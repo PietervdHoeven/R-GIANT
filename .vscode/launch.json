@@ -36,6 +36,20 @@
         "module": "src.preprocessing.graphs",
         "cwd": "${workspaceFolder}"
       },
+      {
+        "name": "Run batch_clean.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "batch_scripts.batch_clean",
+        "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run batch_connectomes.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "batch_scripts.batch_connectomes",
+        "cwd": "${workspaceFolder}"
+      }
     ]
   }
   

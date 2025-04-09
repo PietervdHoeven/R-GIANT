@@ -1,5 +1,6 @@
 import numpy as np
-from src.preprocessing.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
+import os
+from src.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
 
 def parse_aseg_stats(aseg_path: str):
     """
@@ -202,25 +203,24 @@ def extract_node_features(
     mappings = load_parcellation_mappings()
 
     # Extract asegs stats and estimated Total Intracranial Volume (eTIV) by parsing aseg.stats
-    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{base_dir}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_aseg.stats")
+    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{base_dir}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_aseg.stats")
 
     # Encode the sub cortical features from the parsed siub cortical segmentation stats into the node feature matrix X
     X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs2reduced=mappings["fs2reduced"], fluid_labels=fluid_labels)
 
     # Extract aparc stats by parsing lh.aparc.stats and rh.aparc.stats
     aparc_stats = parse_aparc_stats(
-        lh_parc_path=f"{base_dir}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_lh.aparc.stats",
-        rh_parc_path=f"{base_dir}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_rh.aparc.stats"
+        lh_parc_path=f"{base_dir}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_lh.aparc.stats",
+        rh_parc_path=f"{base_dir}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_rh.aparc.stats"
     )
 
     # Encode the cortical features from the parsed cortical parcellation stats into the node feature matrix X
     X = encode_ctx_features(X, aparc_stats, names2reduced=ctx_names2reduced)
 
     # Save the node feature matrix X to a numpy file
-    np.save(f"{base_dir}intermediate/{patient_id}_{session_id}_node_features.npy", X)
+    os.makedirs(f"{base_dir}feature_matrices/", exist_ok=True)
+    np.save(f"{base_dir}feature_matrices/{patient_id}_{session_id}_X.npy", X)
     np.set_printoptions(precision=4, suppress=True)
-    for i in range(X.shape[0]):
-        print(f"{X[i]}")
 
 
 

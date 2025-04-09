@@ -5,7 +5,8 @@ import os
 import numpy as np
 import nibabel as nib
 import matplotlib.pyplot as plt
-from src.preprocessing.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
+from filelock import FileLock
+from src.utils.json_loading import load_special_fs_labels, load_parcellation_mappings
 from scipy.ndimage import binary_dilation
 from dipy.core.gradients import gradient_table
 from dipy.io.gradients import read_bvals_bvecs
@@ -23,40 +24,42 @@ from dipy.segment.clustering import QuickBundles
 from dipy.tracking.utils import target, connectivity_matrix
 
 
-# Create a logger
-logger = logging.getLogger(__name__)
-logger.propagate = False  # Prevent duplicate logs if used in Jupyter or elsewhere
 
-
-def set_verbosity(verbose: bool = True, log_file: str = None):
+def setup_debug_logger(patient_id, session_id):
     """
-    Sets the logging level and optionally writes logs to a file.
-
-    Args:
-        verbose (bool): If True, shows detailed DEBUG/INFO logs; otherwise WARNING+.
-        log_file (str, optional): Path to a .log file to write logs to.
+    Setup a logger for debugging.
     """
-    # Clear existing handlers to avoid duplicate logs
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    logger = logging.getLogger(f"debug_connectome_{patient_id}_{session_id}")
+    logger.setLevel(logging.INFO)
+    
+    # Ensure logger does not propagate to avoid duplicate log entries when a master logger is present.
+    logger.propagate = False  
 
-    level = logging.DEBUG if verbose else logging.WARNING
-    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', "%H:%M:%S")
-
-    # Console logging
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    # Optional file logging
-    if log_file:
-        import os
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        file_handler = logging.FileHandler(log_file, mode='w')
-        file_handler.setFormatter(formatter)
+    # Create the directory if it doesn't exist.
+    os.makedirs("logs/connectomes", exist_ok=True)
+    
+    # Create a timestamped log file name.
+    timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    log_filename = f"{patient_id}_{session_id}_{timestamp}.log"
+    log_filepath = os.path.join("logs/connectomes", log_filename)
+    
+    # Setup file handler.
+    file_handler = logging.FileHandler(log_filepath)
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    
+    # Check if handlers already exist; if not, add file and stream handlers
+    if not logger.handlers:
         logger.addHandler(file_handler)
-
-    logger.setLevel(level)
+        
+        # Optional: add a stream handler for console output
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+    
+    return logger
 
 
 
@@ -279,7 +282,7 @@ def filter_outliers(streamlines: Streamlines, min_cluster_size: int = 5, thresho
 
 
 
-def preprocess_parcellation(fs_parcellation: np.ndarray) -> tuple[np.ndarray, dict[int, int], dict[int, int]]:
+def preprocess_parcellation(fs_parcellation: np.ndarray, fs2reduced: dict) -> tuple[np.ndarray, dict[int, int], dict[int, int]]:
     """
     Removes excluded labels from a FreeSurfer parcellation and remaps remaining labels to a compact range.
     The parcellatioin mapping from JSON only contains labels that we want as nodes in the connectome.
@@ -295,9 +298,6 @@ def preprocess_parcellation(fs_parcellation: np.ndarray) -> tuple[np.ndarray, di
             - fs2reduced (dict[int, int]): Mapping from original FreeSurfer label → compact index.
             - reduced2fs (dict[int, int]): Mapping from compact index → original FreeSurfer label.
     """
-    # Load reduced mapping from JSON file
-    fs2reduced = load_parcellation_mappings()['fs2reduced']
-
     # Initialize output parcellation
     reduced_parcellation = np.zeros_like(fs_parcellation, dtype=int)
 
@@ -417,13 +417,16 @@ def multiview_connectivities(
 
 
 
-def plot_multiview_connectomes(views_dict):
+def plot_multiview_connectomes(views_dict: dict, patient_id: str, session_id: str, save_dir: str = "plots/connectivity_matrices/") -> None:
     """
-    Plots multiple connectivity matrices side by side using log-scaled color maps.
+    Saves multiple connectivity matrices side by side in a single image file using log-scaled color maps.
 
     Args:
         views_dict (dict): Dictionary where keys are metric names (e.g., 'fa', 'md') 
                            and values are square connectivity matrices (np.ndarray).
+        patient_id (str): Identifier for the patient.
+        session_id (str): Identifier for the session.
+        save_dir (str): Directory to save the plots. Defaults to "plots/connectivity_matrices/".
     """
     views = list(views_dict.keys())
 
@@ -432,18 +435,16 @@ def plot_multiview_connectomes(views_dict):
 
     for i, view in enumerate(views):
         ax = axes[i]
-
-        # Title: nicely formatted version of the metric name
         ax.set_title(view.replace('_', ' ').upper())
-
-        # Plot the matrix using log scale (log1p to avoid log(0))
         im = ax.imshow(np.log1p(views_dict[view]), interpolation='nearest', cmap='viridis')
-
-        # Add colorbar to each subplot
         fig.colorbar(im, ax=ax)
 
     plt.tight_layout()
-    plt.show()
+
+    # Save all views into a single file
+    os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, f"{patient_id}_{session_id}_multiview_connectomes.png"))
+    plt.close()
 
 
 
@@ -466,179 +467,144 @@ def visualize_streamlines(streamlines: Streamlines) -> None:
 
 
 
-def build_connectomes(patient_id: str, session_id: str, base_path: str = "data/") -> None:
+def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "data/", special_fs_labels: dict = None, fs2reduced: dict = None, external_logger = None) -> None:
     """
     Full pipeline for building multiview structural connectomes from DWI and parcellation data.
 
     Args:
         patient_id (str): Subject ID (e.g., "s0001").
         session_id (str): Session ID (e.g., "d0757").
-        base_path (str): Directory where all input data is stored.
+        base_dir (str): Directory where all input data is stored.
     """
 
-    logger.info(f"Starting connectome build for patient {patient_id} | Session {session_id}")
+    # Setup logger
+    if external_logger:
+        logger = external_logger
+    else:
+        logger = setup_debug_logger(patient_id, session_id)
+
+    # Start the timer
     start_time = time.time()
 
+    # Log the start of the pipeline
+    logger.info(f"Starting pipeline for patient {patient_id} | session {session_id} at {start_time}")
+
     # Create the directory structure for the patient and session if it doesn't exist yet
-    os.makedirs(f"{base_path}raw/{patient_id}_{session_id}", exist_ok=True)
-    os.makedirs(f"{base_path}intermediate/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_dir}adj_matrices/{patient_id}_{session_id}", exist_ok=True)
 
     # Define paths to input files
     paths = {
-        "dwi": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "bval": f"{base_path}raw/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
-        "smri": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "smri_parc": f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "dwi": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "bval": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
+        "smri": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "smri_parc": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
     }
 
-    # Freesurfer-based labels for white matter (used as seed mask)
-    WM_LABELS = [
-        2,   # Left-Cerebral-White-Matter
-        41,  # Right-Cerebral-White-Matter
-        7,   # Left-Cerebellum-White-Matter
-        46,  # Right-Cerebellum-White-Matter
-        77,  # WM-hypointensities
-        251, 252, 253, 254, 255,  # Corpus Callosum segments
-        10,  # Left-Thalamus-Proper
-        49,  # Right-Thalamus-Proper
-        28,  # Left-VentralDC
-        60,  # Right-VentralDC
-        16   # Brain-Stem
-    ]
+    # Load parcellation mappings for FreeSurfer to reduced labels
+    if fs2reduced is None:
+        fs2reduced = load_parcellation_mappings()['fs2reduced']
 
-    wm_labels = load_special_fs_labels()['wm_labels']
-
-    # Labels to exclude based on fluid compartments
-    FLUID_LABELS = [
-        4,   # Left-Lateral-Ventricle
-        43,  # Right-Lateral-Ventricle
-        5,   # Left-Inf-Lat-Vent
-        44,  # Right-Inf-Lat-Vent
-        14,  # 3rd-Ventricle
-        15,  # 4th-Ventricle
-        72,  # 5th-Ventricle (if present)
-        
-        24,  # CSF (cerebrospinal fluid — general region)
-        
-        31,  # Left-Choroid-Plexus
-        63,  # Right-Choroid-Plexus
-        
-        30,  # Left-Vessel
-        62,  # Right-Vessel
-        
-        80,  # non-WM-hypointensities
-        81,  # Left-non-WM-hypointensities
-        82,  # Right-non-WM-hypointensities
-
-        85   # Optic-Chiasm
-    ]
-
-    # Labels to exclude from parcellation for connectome creation
-    EXCL_LABELS = [
-        2, 41, 7, 46, 77, 251, 252, 253, 254, 255, 1000, 2000  # White matter + corpus callosum structures + unkown cortex
-    ]
+    # Unpack specific FreeSurfer labels for filtering
+    if special_fs_labels is None:
+        special_fs_labels = load_special_fs_labels()
+    WM_LABELS = special_fs_labels["wm_labels"]
+    FLUID_LABELS = special_fs_labels["fluid_labels"]
 
     try:
-        logger.info("Step 1: Loading data")
+        logger.info("Loading data")
         dwi_data, dwi_affine, gtab, fs_parcellation = load_data(paths)
     except Exception:
-        logger.exception("Step 1 failed: Loading data")
+        logger.exception("Failed loading data")
         raise
 
     try:
-        logger.info("Step 2: Creating white matter masks")
+        logger.info("Creating white matter masks")
         wm_mask, dilated_wm_mask = create_wm_mask(fs_parcellation, WM_LABELS)
     except Exception:
-        logger.exception("Step 2 failed: Creating white matter masks")
+        logger.exception("Failed creating white matter masks")
         raise
 
     try:
-        logger.info("Step 3: Fitting DTI model")
+        logger.info("Fitting DTI model")
         dti_fit, fa_data, md_data, rd_data, ad_data = fit_dti_model(dwi_data, gtab, dilated_wm_mask)
     except Exception:
-        logger.exception("Step 3 failed: Fitting DTI model")
+        logger.exception("Failed fitting DTI model")
         raise
 
     try:
-        logger.info("Step 4: Generating streamlines")
+        logger.info("Generating streamlines")
         streamlines = generate_streamlines(dti_fit, dilated_wm_mask, fa_data, dwi_affine)
     except Exception:
-        logger.exception("Step 4 failed: Generating streamlines")
+        logger.exception("Failed generating streamlines")
         raise
 
     try:
-        logger.info("Step 5: Filtering by length")
+        logger.info("Filtering streamlines by length")
         streamlines = filter_by_length(streamlines, min_length=20, max_length=300)
     except Exception:
-        logger.exception("Step 5 failed: Filtering by length")
+        logger.exception("Failed filtering streamlines by length")
         raise
 
     try:
-        logger.info("Step 6: Anatomical filtering")
+        logger.info("Performing anatomical filtering")
         streamlines = filter_anatomical(streamlines, fs_parcellation, dwi_affine, FLUID_LABELS)
     except Exception:
-        logger.exception("Step 6 failed: Anatomical filtering")
+        logger.exception("Failed anatomical filtering")
         raise
 
     try:
-        logger.info("Step 7: Filtering outliers")
+        logger.info("Filtering outliers")
         streamlines = filter_outliers(streamlines, min_cluster_size=5, threshold=10.0)
     except Exception:
-        logger.exception("Step 7 failed: Filtering outliers")
+        logger.exception("Failed filtering outliers")
         raise
 
     try:
-        logger.info("Step 8: Reducing parcellation")
-        reduced_parcellation = preprocess_parcellation(fs_parcellation)
+        logger.info("Reducing parcellation")
+        reduced_parcellation = preprocess_parcellation(fs_parcellation, fs2reduced)
     except Exception:
-        logger.exception("Step 8 failed: Reducing parcellation")
+        logger.exception("Failed reducing parcellation")
         raise
 
     try:
-        logger.info("Step 9: Building streamline count connectome")
+        logger.info("Building streamline count connectome")
         connectome, streamline_mapping = sl_count_connectivity(streamlines, dwi_affine, reduced_parcellation)
     except Exception:
-        logger.exception("Step 9 failed: Building streamline count connectome")
+        logger.exception("Failed building streamline count connectome")
         raise
 
     try:
-        logger.info("Step 10: Computing multiview connectomes")
+        logger.info("Computing multiview connectomes")
         multiview_connectomes = multiview_connectivities(
             streamline_mapping, dwi_affine, fa_data, md_data, rd_data, ad_data,
             num_rois=reduced_parcellation.max()
         )
         multiview_connectomes['count'] = connectome
     except Exception:
-        logger.exception("Step 10 failed: Computing multiview connectomes")
+        logger.exception("Failed computing multiview connectomes")
         raise
 
     try:
-        logger.info("Step 11: Plotting multiview connectomes")
-        plot_multiview_connectomes(multiview_connectomes)
+        logger.info("Plotting multiview connectomes")
+        plot_multiview_connectomes(multiview_connectomes, patient_id=patient_id, session_id=session_id)
     except Exception:
-        logger.exception("Step 11 failed: Plotting multiview connectomes")
+        logger.exception("Failed plotting multiview connectomes")
         raise
 
     try:
-        logger.info("Step 12: Saving adjacency matrices to intermediate data")
+        logger.info("Saving adjacency matrices to intermediate data")
         np.savez_compressed(
-            f"{base_path}intermediate/{patient_id}_{session_id}/{patient_id}_{session_id}_As.npz",
+            f"{base_dir}adj_matrices/{patient_id}_{session_id}_As.npz",
             **multiview_connectomes
         )
     except Exception:
-        logger.exception("Step 12 failed: Saving adjacency matrices to intermediate data")
+        logger.exception("Failed saving adjacency matrices to intermediate data")
         raise
 
     logger.info(f"Pipeline completed for patient {patient_id} | session {session_id} in {time.time() - start_time:.2f} seconds.")
 
 
-def main():
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = f"logs/connectome_pipeline/{timestamp}.log"
-    set_verbosity(verbose=True)#, log_file=log_file)
-    build_connectomes(patient_id="0001", session_id="0757", base_path="C:/Users/piete/Documents/Projects/R-GIANT/data/")
-
 
 if __name__ == "__main__":
-    main()
+    run_connectome_pipeline(participant_id="0001", session_id="0757")

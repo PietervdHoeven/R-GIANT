@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 def load_parcellation_mappings():
     # Navigate to the mappings file
@@ -18,3 +19,15 @@ def load_special_fs_labels():
         data = json.load(f)
 
     return data
+
+def load_patient_session_ids():
+    """
+    Load a list of session dictionaries from a JSON file.
+    
+    The JSON file should be an array of objects with "patient_id" and "session_id" keys.
+    """
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]  # go 2 levels up from /parent/child/script.py
+    SESSIONS_FILE = PROJECT_ROOT / "data" / "sessions.json"
+    with open(SESSIONS_FILE, 'r') as f:
+        sessions = json.load(f)
+    return sessions
