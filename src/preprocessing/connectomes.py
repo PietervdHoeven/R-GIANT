@@ -282,7 +282,7 @@ def filter_outliers(streamlines: Streamlines, min_cluster_size: int = 5, thresho
 
 
 
-def preprocess_parcellation(fs_parcellation: np.ndarray, fs2reduced: dict) -> tuple[np.ndarray, dict[int, int], dict[int, int]]:
+def preprocess_parcellation(fs_parcellation: np.ndarray, fs_idxs2graph_idxs: dict) -> tuple[np.ndarray, dict[int, int], dict[int, int]]:
     """
     Removes excluded labels from a FreeSurfer parcellation and remaps remaining labels to a compact range.
     The parcellatioin mapping from JSON only contains labels that we want as nodes in the connectome.
@@ -295,14 +295,14 @@ def preprocess_parcellation(fs_parcellation: np.ndarray, fs2reduced: dict) -> tu
     Returns:
         Tuple containing:
             - reduced_parcellation (np.ndarray): Parcellation with excluded labels set to 0 and remaining relabeled to a dense index.
-            - fs2reduced (dict[int, int]): Mapping from original FreeSurfer label → compact index.
+            - fs_idxs2graph_idxs (dict[int, int]): Mapping from original FreeSurfer label → compact index.
             - reduced2fs (dict[int, int]): Mapping from compact index → original FreeSurfer label.
     """
     # Initialize output parcellation
     reduced_parcellation = np.zeros_like(fs_parcellation, dtype=int)
 
     # Relabel all retained regions (json loaded dicts always have str keys)
-    for label, new_label in fs2reduced.items():
+    for label, new_label in fs_idxs2graph_idxs.items():
         reduced_parcellation[fs_parcellation == int(label)] = new_label
 
     return reduced_parcellation
@@ -467,7 +467,7 @@ def visualize_streamlines(streamlines: Streamlines) -> None:
 
 
 
-def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "data/", special_fs_labels: dict = None, fs2reduced: dict = None, external_logger = None) -> None:
+def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "data/", special_fs_labels: dict = None, fs_idxs2graph_idxs: dict = None, external_logger = None) -> None:
     """
     Full pipeline for building multiview structural connectomes from DWI and parcellation data.
 
@@ -502,8 +502,8 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
     }
 
     # Load parcellation mappings for FreeSurfer to reduced labels
-    if fs2reduced is None:
-        fs2reduced = load_parcellation_mappings()['fs2reduced']
+    if fs_idxs2graph_idxs is None:
+        fs_idxs2graph_idxs = load_parcellation_mappings()['fs_idxs2graph_idxs']
 
     # Unpack specific FreeSurfer labels for filtering
     if special_fs_labels is None:
@@ -562,7 +562,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
 
     try:
         logger.info("Reducing parcellation")
-        reduced_parcellation = preprocess_parcellation(fs_parcellation, fs2reduced)
+        reduced_parcellation = preprocess_parcellation(fs_parcellation, fs_idxs2graph_idxs)
     except Exception:
         logger.exception("Failed reducing parcellation")
         raise
@@ -607,4 +607,4 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
 
 
 if __name__ == "__main__":
-    run_connectome_pipeline(participant_id="0001", session_id="0757")
+    run_connectome_pipeline(patient_id="0001", session_id="0757")

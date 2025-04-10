@@ -49,6 +49,13 @@
         "request": "launch",
         "module": "batch_scripts.batch_connectomes",
         "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run sessions.py",
+        "type": "debugpy",
+        "request": "launch",
+        "module": "src.session_matching.sessions",
+        "cwd": "${workspaceFolder}"
       }
     ]
   }
