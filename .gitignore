@@ -17,19 +17,20 @@ logs/
 !logs/labels/.gitkeep
 
 # Data - keep structure, ignore contents
-data/*
-!data/.gitkeep
-!data/labels.csv
-data/raw/*
-!data/raw/.gitkeep
-data/intermediate/*
-!data/intermediate/.gitkeep
-data/final/*
-!data/final/.gitkeep
-plots/*
-!plots/.gitkeep
-plots/connectivity_matrices/*
-!plots/connectivity_matrices/.gitkeep
+adj_matrices/*
+!adj_matrices/.gitkeep
+clean_mri/*
+!clean_mri/.gitkeep
+feature_matrices/*
+!feature_matrices/.gitkeep
+packed_mr/*
+!packed_mr/.gitkeep
+raw_mri/*
+!raw_mri/.gitkeep
+temp_mri/*
+!temp_mri/.gitkeep
+torch_graphs/*
+!torch_graphs/.gitkeep
 
 packed_data/*
 !packed_data/.gitkeep
