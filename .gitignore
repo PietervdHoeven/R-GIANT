@@ -24,6 +24,7 @@ data/*
 # But keep all directories
 !data/**/
 !data/.gitkeep
+data/**/*
 
 # Also keep .gitkeep files inside subfolders
 !data/**/.gitkeep
