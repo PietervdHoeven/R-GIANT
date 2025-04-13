@@ -6,7 +6,7 @@ import numpy as np
 import nibabel as nib
 import matplotlib.pyplot as plt
 from filelock import FileLock
-from src.utils.json_loading import load_special_fs_labels, load_parcellation_mappings
+from utils.json_loading import load_special_fs_labels, load_parcellation_mappings
 from scipy.ndimage import binary_dilation
 from dipy.core.gradients import gradient_table
 from dipy.io.gradients import read_bvals_bvecs

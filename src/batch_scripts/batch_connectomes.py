@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
-from src.preprocessing.connectomes import run_connectome_pipeline  # Ensure cleaning.py is in your PYTHONPATH or same directory
-from src.utils.logging import setup_central_logger  # Ensure logging.py is in your PYTHONPATH or same directory
-from src.utils.json_loading import load_patient_session_ids, load_parcellation_mappings, load_special_fs_labels  # Ensure json_loading.py is in your PYTHONPATH or same directory
+from preprocessing.connectomes import run_connectome_pipeline  # Ensure cleaning.py is in your PYTHONPATH or same directory
+from utils.logging import setup_central_logger  # Ensure logging.py is in your PYTHONPATH or same directory
+from utils.json_loading import load_patient_session_ids, load_parcellation_mappings, load_special_fs_labels  # Ensure json_loading.py is in your PYTHONPATH or same directory
 
 
 def main():

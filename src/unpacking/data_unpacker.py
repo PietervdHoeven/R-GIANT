@@ -2,6 +2,8 @@ import os
 import shutil
 import json
 import argparse
+import tarfile
+import zipfile
 from tqdm import tqdm
 
 def unpack_mr(
@@ -118,61 +120,72 @@ def unpack_fs(
 
 
 
-def unpack_pup(
-        packed_dir, target_dir, pup_ids2mr_ids: dict, remove: bool = False
-):
-    """
-        Unpacks and processes PUP (PET Unified Pipeline) session directories, translating their IDs to 
-    corresponding MR session IDs, and moves specific files to a target directory.
-    Args:
-        packed_dir (str): Path to the directory containing packed PUP session directories.
-        target_dir (str): Path to the directory where processed session directories will be created.
-        pup_ids2mr_ids (dict): A mapping of PUP session IDs (tuple of participant ID and session ID) 
-        to MR session IDs (tuple of participant ID and session ID).
-        remove (bool, optional): If True, removes the original packed directories after processing. 
-        Defaults to False.
-    Raises:
-        KeyError: If a PUP session ID from the directory name does not exist in the `pup_ids2mr_ids` mapping.
-        FileNotFoundError: If the expected `pet_proc` directory or required files are missing.
-    Notes:
-        - The function handles both zipped and unzipped session directories.
-        - Only files ending with "RSF.suvr" from the deepest `pet_proc` directory are moved to the target directory.
-        - The target directory structure is created based on the translated MR session IDs.
-    """
-    for session_dir in tqdm(os.listdir(packed_dir)):
-        # Unzip the session directory if it is a zip file
-        if session_dir.endswith(".zip"):
-            zip_path = os.path.join(packed_dir, session_dir)
-            extract_path = os.path.join(packed_dir, session_dir[:-4])  # Remove ".zip" extension
-            shutil.unpack_archive(zip_path, extract_path)
-            session_dir = session_dir[:-4]  # Update session_dir to the extracted folder name
+def unpack_pup(packed_dir, target_dir, pup_ids2mr_ids, remove=False):
+    for session in tqdm(os.listdir(packed_dir)):
+        session_path = os.path.join(packed_dir, session)
 
-        # Get the ids from the dir name, translate to matched MR session and create target session directory
-        pup_p_id, pup_s_id = get_ids(session_dir, is_pup=True)
-        p_id, s_id = pup_ids2mr_ids[(pup_p_id, pup_s_id)]
+        is_zip = session.endswith(".zip")
+        is_tar = session.endswith(".tar.gz")
+        is_dir = os.path.isdir(session_path)
+
+        # Determine session name (used to retrieve IDs)
+        if is_zip:
+            session_name = session[:-4]
+        elif is_tar:
+            session_name = session[:-7]
+        elif is_dir:
+            session_name = session
+        else:
+            print(f"Skipping unsupported file: {session}")
+            continue
+
+        try:
+            pup_p_id, pup_s_id = get_ids(session_name, is_pup=True)
+            p_id, s_id = pup_ids2mr_ids[(pup_p_id, pup_s_id)]
+        except KeyError:
+            print(f"❗ No matching MR session found for {session_name}")
+            continue
+
         new_session_dir = os.path.join(target_dir, f"{p_id}_{s_id}")
-        os.makedirs(
-            new_session_dir,
-            exist_ok=True
-        )
+        os.makedirs(new_session_dir, exist_ok=True)
 
-        # walk through all dirs untill you find a folder named pet_proc
-        pet_proc_dir = None
-        for root, dirs, files in os.walk(os.path.join(packed_dir, session_dir), topdown = False):
-            if "pet_proc" in dirs:
-                pet_proc_dir = os.path.join(root, "pet_proc")
-                break
+        # --- CASE 1: ZIP file ---
+        if is_zip:
+            with zipfile.ZipFile(session_path, 'r') as archive:
+                for member in archive.namelist():
+                    if "pet_proc" in member and member.endswith("RSF.suvr"):
+                        with archive.open(member) as src_file, open(os.path.join(new_session_dir, os.path.basename(member)), 'wb') as out_file:
+                            shutil.copyfileobj(src_file, out_file)
 
-        if not pet_proc_dir:
-            raise FileNotFoundError(f"'pet_proc' directory not found in {session_dir}")
+        # --- CASE 2: TAR.GZ file ---
+        elif is_tar:
+            with tarfile.open(session_path, 'r:gz') as archive:
+                for member in archive.getmembers():
+                    if "pet_proc" in member.name and member.name.endswith("RSF.suvr"):
+                        extracted = archive.extractfile(member)
+                        if extracted:
+                            with open(os.path.join(new_session_dir, os.path.basename(member.name)), 'wb') as out_file:
+                                shutil.copyfileobj(extracted, out_file)
 
-        # Move only the files that end with RSF.suvr from the deepest directory in session_dir named pet_proc
-        for file_name in os.listdir(pet_proc_dir):
-            if file_name.endswith("RSF.suvr"):
-                src_path = os.path.join(pet_proc_dir, file_name)
-                dst_path = os.path.join(new_session_dir, file_name)
-                shutil.copy(src_path, dst_path)
+        # --- CASE 3: Already-unpacked folder ---
+        elif is_dir:
+            pet_proc_dir = None
+            for root, dirs, files in os.walk(session_path):
+                if os.path.basename(root) == "pet_proc":
+                    pet_proc_dir = root
+                    break
 
+            if pet_proc_dir:
+                for file_name in os.listdir(pet_proc_dir):
+                    if file_name.endswith("RSF.suvr"):
+                        src_path = os.path.join(pet_proc_dir, file_name)
+                        dst_path = os.path.join(new_session_dir, file_name)
+                        shutil.copy(src_path, dst_path)
+            else:
+                print(f"'pet_proc' folder not found in {session}")
+
+        if remove and (is_zip or is_tar):
+            os.remove(session_path)
 
 
 def load_pup2mr_json(path: str = 'pup_ids2mr_ids.json'):

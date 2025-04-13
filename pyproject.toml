@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-rgiant-batch = "batch_scripts.cli:main"
+rgiant-batch = "cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
