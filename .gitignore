@@ -17,23 +17,19 @@ logs/
 !logs/labels/.gitkeep
 
 # Data - keep structure, ignore contents
-adj_matrices/*
-!adj_matrices/.gitkeep
-clean_mri/*
-!clean_mri/.gitkeep
-feature_matrices/*
-!feature_matrices/.gitkeep
-packed_mr/*
-!packed_mr/.gitkeep
-raw_mri/*
-!raw_mri/.gitkeep
-temp_mri/*
-!temp_mri/.gitkeep
-torch_graphs/*
-!torch_graphs/.gitkeep
 
-packed_data/*
-!packed_data/.gitkeep
+# Ignore everything inside data/
+data/*
+
+# But keep all directories
+!data/**/
+!data/.gitkeep
+
+# Also keep .gitkeep files inside subfolders
+!data/**/.gitkeep
+
+# Keep CSVs at root of /data
+!data/*.csv
 
 
 # OS / Editor files
