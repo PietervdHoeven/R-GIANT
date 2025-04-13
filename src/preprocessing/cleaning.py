@@ -528,7 +528,7 @@ def apply_bvec_rotations(
 
 
 
-def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "data/", save: bool = True, external_logger = None) -> None:
+def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "data/", save: bool = True, clear_temp: bool = False, external_logger = None) -> None:
 
     # Setup logger
     if external_logger:
@@ -540,37 +540,36 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
     logger.info(f"Starting DWI cleaning pipeline for patient {patient_id} | Session {session_id}")
 
     # Create the directory structure for the patient and session if it doesn't exist yet
-    os.makedirs(f"{base_path}raw_mri/{patient_id}_{session_id}", exist_ok=True)
-    os.makedirs(f"{base_path}temp_mri/{patient_id}_{session_id}", exist_ok=True)
-    os.makedirs(f"{base_path}clean_mri/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}/temp/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{base_path}/clean/{patient_id}_{session_id}", exist_ok=True)
 
     paths = {
-        "dwi": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
-        "denoised_dwi": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
-        "denoised_mc_dwi": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
-        "bval": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
-        "smri": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_brain.mgz",
-        "parc": f"{base_path}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_aparc+aseg.mgz",
+        "dwi": f"{base_path}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
+        "bval": f"{base_path}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{base_path}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
+        "smri": f"{base_path}/fs/{patient_id}_{session_id}/brain.mgz",
+        "parc": f"{base_path}/fs/{patient_id}_{session_id}/aparc+aseg.mgz",
 
-        "resampled_smri": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
-        "downsampled_smri": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "denoised_b0": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
-        "denoised_brain_b0": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
-        "denoised_brain_upsampled_b0": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
-        "b0_to_smri": f"{base_path}temp_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz",
+        "denoised_dwi": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
+        "denoised_mc_dwi": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
+        "resampled_smri": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
+        "downsampled_smri": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "denoised_b0": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
+        "denoised_brain_b0": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
+        "denoised_brain_upsampled_b0": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
+        "b0_to_smri": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz",
 
-        "corrected_dwi": f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "downsampled_parc": f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
-        "rotated_bvec": f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec"
+        "corrected_dwi": f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "downsampled_parc": f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "rotated_bvec": f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec"
     }
 
     # Move the bvals file to the clean_mri directory
     try:
-        logger.info("Moving bvals file to clean_mri directory")
-        shutil.copy(paths["bval"], f"{base_path}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval")
+        logger.info("Moving bvals file to clean directory")
+        shutil.copy(paths["bval"], f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval")
     except Exception:
-        logger.exception("Failed to move bvals file to clean_mri directory")
+        logger.exception("Failed to move bvals file to clean directory")
         return
 
     try:
@@ -685,6 +684,13 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
     except Exception:
         logger.exception("Failed at Step 9: Rotating b-vectors")
         return
+    
+    if clear_temp:
+        try:
+            logger.info("Clearing temporary files")
+            shutil.rmtree(f"{base_path}/temp/{patient_id}_{session_id}")
+        except:
+            logger.exception("Failed to clear temporary files")
 
     logger.info(f"Cleaning pipeline completed for patient {patient_id} | session {session_id} in {round(time.time() - start_time, 2)} seconds.")
 
@@ -692,4 +698,4 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
 
 # Example use case for debugging or running directly
 if __name__ == "__main__":
-    run_cleaning_pipeline(patient_id="0001", session_id="0757")
+    run_cleaning_pipeline(patient_id="0001", session_id="0757", clear_temp=True)

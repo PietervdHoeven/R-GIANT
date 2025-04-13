@@ -179,7 +179,7 @@ def generate_streamlines(
     """
     # Define seed points in high-FA white matter regions
     seed_mask = wm_mask & (fa_data > fa_thresh)
-    seeds = utils.seeds_from_mask(seed_mask, affine=dwi_affine, density=1)
+    seeds = utils.seeds_from_mask(seed_mask, affine=dwi_affine, density=2)
 
     # Load orientation sphere for directional modeling
     sphere = get_sphere(name=sphere_str)
@@ -486,19 +486,13 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
     # Start the timer
     start_time = time.time()
 
-    # Log the start of the pipeline
-    logger.info(f"Starting pipeline for patient {patient_id} | session {session_id} at {start_time}")
-
-    # Create the directory structure for the patient and session if it doesn't exist yet
-    os.makedirs(f"{base_dir}adj_matrices/{patient_id}_{session_id}", exist_ok=True)
-
     # Define paths to input files
     paths = {
-        "dwi": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "bval": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
-        "smri": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "smri_parc": f"{base_dir}clean_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "dwi": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "bval": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
+        "smri": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "smri_parc": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
     }
 
     # Load parcellation mappings for FreeSurfer to reduced labels
@@ -595,7 +589,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
     try:
         logger.info("Saving adjacency matrices to intermediate data")
         np.savez_compressed(
-            f"{base_dir}adj_matrices/{patient_id}_{session_id}_As.npz",
+            f"{base_dir}/matrices/{patient_id}_{session_id}_As.npz",
             **multiview_connectomes
         )
     except Exception:

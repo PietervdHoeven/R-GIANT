@@ -140,8 +140,8 @@ if __name__ == "__main__":
     patient_id = "0001"
     session_id = "0757"
     # Load adjacency matrices and feature matrix
-    As_path = f"{base_dir}/adj_matrices/{patient_id}_{session_id}_As.npz"
-    X_path = f"{base_dir}/feature_matrices/{patient_id}_{session_id}_X.npy"
+    As_path = f"{base_dir}/matrices/{patient_id}_{session_id}_As.npz"
+    X_path = f"{base_dir}/matrices/{patient_id}_{session_id}_X.npy"
 
     As = np.load(As_path)  # Convert each adjacency matrix to a torch.Tensor
     X = np.load(X_path)  # Load feature matrix as a torch.Tensor
@@ -153,4 +153,4 @@ if __name__ == "__main__":
     print(data)
 
     # Save the graph
-    torch.save(data, f"{base_dir}/torch_graphs/{patient_id}_{session_id}_G.pt")
+    torch.save(data, f"{base_dir}/graphs/{patient_id}_{session_id}_G.pt")

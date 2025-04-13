@@ -187,7 +187,6 @@ def encode_pup_features(X: np.array, suvr_values: dict, fs_names2graph_idxs: dic
         if roi in fs_names2graph_idxs:
             idx = fs_names2graph_idxs[roi] - 1 # -1 for 0-based indexing
             X[idx, 9] = value  # PIB-SUVR
-            X[idx, 10] = value  # AV45-SUVR (assuming same value for demonstration)
     return X
 
 
@@ -238,42 +237,46 @@ def extract_node_features(
             7: ThickStd (FS: thickness standard deviation)
             8: MeanCurv (FS: Cortical ROI mean curvature)
             9: PIB-SUVR (PET Unified Pipeline (PUP): Pitssburgh Compound-B standardized uptake value ratio)
-            10: AV45-SUVR (PET Unified Pipeline (PUP): ApoE4 standardized uptake value ratio)
 
     """
     # Build empty feature matrix with shape (n_nodes, n_features)
     n_nodes = len(fs_idxs2graph_idxs)
-    n_features = 11 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv, PIB-SUVR, AV45-SUVR
+    n_features = 10 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv, PIB-SUVR, AV45-SUVR
     X = np.zeros((n_nodes, n_features))
 
     # Load parcellation label mappings
     mappings = load_parcellation_mappings()
 
     # Extract asegs stats and estimated Total Intracranial Volume (eTIV) by parsing aseg.stats
-    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{base_dir}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_aseg.stats")
+    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{base_dir}/fs/{patient_id}_{session_id}/aseg.stats")
 
     # Encode the sub cortical features from the parsed siub cortical segmentation stats into the node feature matrix X
     X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs_idxs2graph_idxs=mappings["fs_idxs2graph_idxs"], fluid_labels=fluid_labels)
 
     # Extract aparc stats by parsing lh.aparc.stats and rh.aparc.stats
     aparc_stats = parse_aparc_stats(
-        lh_parc_path=f"{base_dir}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_lh.aparc.stats",
-        rh_parc_path=f"{base_dir}raw_mri/{patient_id}_{session_id}/{patient_id}_{session_id}_rh.aparc.stats"
+        lh_parc_path=f"{base_dir}/fs/{patient_id}_{session_id}/lh.aparc.stats",
+        rh_parc_path=f"{base_dir}/fs/{patient_id}_{session_id}/rh.aparc.stats"
     )
 
     # Encode the cortical features from the parsed cortical parcellation stats into the node feature matrix X
     X = encode_ctx_features(X, aparc_stats, fs_names2graph_idxs=fs_names2graph_idxs)
 
     # Extract PET features from PUP files
-    pup_dir = f"{base_dir}raw_pet/{patient_id}_{session_id}/
+    suvr_values = parse_pup_files(
+        pup_dir=f"{base_dir}/pup/{patient_id}_{session_id}/", 
+        fs_names2graph_idxs=load_parcellation_mappings()["fs_names2graph_idxs"]
+        )
+    
+    X = encode_pup_features(X, suvr_values, fs_names2graph_idxs)
 
     # Print the first 5 rows of the node feature matrix X for inspection
     print("First 5 rows of the node feature matrix X:")
     print(X[:5, :])
 
     # Save the node feature matrix X to a numpy file
-    os.makedirs(f"{base_dir}feature_matrices/", exist_ok=True)
-    np.save(f"{base_dir}feature_matrices/{patient_id}_{session_id}_X.npy", X)
+    os.makedirs(f"{base_dir}/matrices/", exist_ok=True)
+    np.save(f"{base_dir}/matrices/{patient_id}_{session_id}_X.npy", X)
     np.set_printoptions(precision=4, suppress=True)
 
 
@@ -284,19 +287,19 @@ if __name__ == "__main__":
     mappings = load_parcellation_mappings()
     special_labels = load_special_fs_labels()
     # Extract node features
-    # extract_node_features(
-    #     patient_id="0001",
-    #     session_id="0757",
-    #     base_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/",
-    #     fs_idxs2graph_idxs=mappings["fs_idxs2graph_idxs"],
-    #     fs_names2graph_idxs=mappings["fs_names2graph_idxs"],
-    #     fluid_labels=special_labels["fluid_labels"]
-    # )
+    extract_node_features(
+        patient_id="0001",
+        session_id="0757",
+        base_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/",
+        fs_idxs2graph_idxs=mappings["fs_idxs2graph_idxs"],
+        fs_names2graph_idxs=mappings["fs_names2graph_idxs"],
+        fluid_labels=special_labels["fluid_labels"]
+    )
 
-    # Example usage for parsing pup files
-    pup_dir = "C:/Users/piete/Documents/Projects/R-GIANT/packed_data/OAS30001_PIB_d2438/OAS30001_PIB_PUPTIMECOURSE_d2438/DATA/pet_proc"
-    suvr_values = parse_pup_files(pup_dir, fs_names2graph_idxs=mappings["fs_names2graph_idxs"])
-    print("Parsed SUVR values:")
-    for roi, value in suvr_values.items():
-        print(f"{roi}: {value}")
+    # # Example usage for parsing pup files
+    # pup_dir = "C:/Users/piete/Documents/Projects/R-GIANT/packed_data/OAS30001_PIB_d2438/OAS30001_PIB_PUPTIMECOURSE_d2438/DATA/pet_proc"
+    # suvr_values = parse_pup_files(pup_dir, fs_names2graph_idxs=mappings["fs_names2graph_idxs"])
+    # print("Parsed SUVR values:")
+    # for roi, value in suvr_values.items():
+    #     print(f"{roi}: {value}")
 

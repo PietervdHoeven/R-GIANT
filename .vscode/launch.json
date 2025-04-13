@@ -56,6 +56,14 @@
         "request": "launch",
         "module": "src.session_matching.sessions",
         "cwd": "${workspaceFolder}"
+      },
+      {
+        "name": "Run data_unpacker.py",
+        "type": "debugpy",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/unpacking/data_unpacker.py",
+        "args": ["pup", "C:/Users/piete/Desktop/packed_pup", "C:/Users/piete/Desktop/test_unpacked_pup", "--json_path", "C:/Users/piete/Documents/Projects/R-GIANT/src/unpacking/pup_ids2mr_ids.json"],
+        "cwd": "${workspaceFolder}"
       }
     ]
   }
