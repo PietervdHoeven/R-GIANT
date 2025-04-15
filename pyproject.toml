@@ -1,24 +1,31 @@
-[build-system]
-requires = ["setuptools>=61", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "rgiant"
 version = "0.1.0"
-description = "Graph-based neuroimaging pipeline for Alzheimer's analysis"
+description = "R-GIANT: A connectome and preprocessing pipeline for neuroimaging data."
 readme = "README.md"
-requires-python = ">=3.8"
+license = { text = "MIT" }
 authors = [
   { name = "Pieter van der Hoeven", email = "pietervanderhoeven98@gmail.com" }
 ]
 dependencies = [
+  "dipy==1.10.0",
+  "nibabel==5.3.2",
+  "numpy<2.0",
+  "HD_BET==2.0.1",
+  "scipy==1.15.2",
+  "matplotlib==3.10.1",
+  "torch==2.3.0+cu118",
+  "torch-geometric==2.6.1",
+  "torch_cluster==1.6.3+pt23cu118",
+  "torch_scatter==2.1.2+pt23cu118",
+  "torch_sparse==0.6.18+pt23cu118",
+  "torch_spline_conv==1.2.2+pt23cu118",
+  "antspyx==0.5.4"
 ]
 
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project.scripts]
-rgiant-batch = "cli:main"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
-
-[tool.setuptools.packages.find]
-where = ["src"]
+rgiant-cli = "rgiant.cli:main"

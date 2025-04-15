@@ -1,5 +1,3 @@
-# File: rgiant/cli.py
-
 import argparse
 from rgiant.preprocessing.cleaning import run_cleaning_pipeline
 from rgiant.preprocessing.connectomes import run_connectome_pipeline
