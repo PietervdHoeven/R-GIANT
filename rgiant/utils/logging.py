@@ -2,37 +2,56 @@ import os
 import time
 import logging
 
-def setup_central_logger():
+import logging
+import os
+import time
+
+def setup_logger(name="rgiant_logger", log_dir="logs/", prefix="task",
+                         stream=True, patient_id=None, session_id=None):
     """
-    Sets up a centralized logger to capture log messages for all sessions.
-    All logs are saved to a centralized log file.
+    Sets up a centralized logger with configurable name, output location, and filename prefix.
+    The log file name will include patient/session ID if provided.
+
+    Args:
+        name (str): Logger name.
+        log_dir (str): Directory where the log file will be saved.
+        prefix (str): Task prefix (e.g., 'cleaning', 'connectomes').
+        stream (bool): Whether to stream logs to console.
+        patient_id (str, optional): Participant ID to include in log filename.
+        session_id (str, optional): Session ID to include in log filename.
+
+    Returns:
+        logging.Logger: Configured logger.
     """
-    logger = logging.getLogger("batch_cleaning_logger")
+    logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
-    
-    # Avoid duplicate handlers if logger is recreated in subsequent runs
+
     if logger.hasHandlers():
         logger.handlers.clear()
-    
-    # Create the logs directory if it doesn't exist
-    log_dir = os.path.join("logs", "batch")
+
     os.makedirs(log_dir, exist_ok=True)
-    
-    # Create a central log file with a timestamp in the name
+
     timestamp = time.strftime("%d%m%Y_%H%M%S")
-    log_filepath = os.path.join(log_dir, f"batch_cleaning_{timestamp}.log")
-    
-    # Create a file handler for the central logger
-    file_handler = logging.FileHandler(log_filepath)
+
+    filename_parts = [prefix]
+    if patient_id: filename_parts.append(str(patient_id))
+    if session_id: filename_parts.append(str(session_id))
+    filename_parts.append(timestamp)
+
+    log_filename = "_".join(filename_parts) + ".log"
+    log_path = os.path.join(log_dir, log_filename)
+
+    file_handler = logging.FileHandler(log_path)
     file_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-    
-    # Optional: add a stream handler for console output
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.INFO)
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-    
+
+    if stream:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
     return logger
+

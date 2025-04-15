@@ -35,7 +35,7 @@ def adjacency_to_edge_list_torch(A_r: torch.Tensor, relation_type: int):
 
 
 
-def build_pyg_data(As, X, label=None):
+def build_pyg_data(patient_id, session_id, data_dir, label=None):
     """
     Constructs a PyTorch Geometric `Data` object from adjacency matrices, node features, 
     and an optional label.
@@ -60,6 +60,11 @@ def build_pyg_data(As, X, label=None):
           edge types, and edge weights.
         - All inputs are converted to PyTorch tensors with appropriate data types.
     """
+    As_path = f"{data_dir}/matrices/{patient_id}_{session_id}_As.npz"
+    X_path = f"{data_dir}/matrices/{patient_id}_{session_id}_X.npy"
+
+    As = np.load(As_path)  
+    X = np.load(X_path)
 
     all_edge_indices = []
     all_edge_types = []
@@ -90,11 +95,14 @@ def build_pyg_data(As, X, label=None):
     if label is not None:
         data.y = torch.tensor([label], dtype=torch.long)
 
-    return data
+    data.id = f"{patient_id}_{session_id}"
+
+    # Save the graph
+    torch.save(data, f"{data_dir}/graphs/{patient_id}_{session_id}_G.pt")
 
 
 
-def test_graph(data: Data, expected_num_nodes=100, expected_feat_dim=9):
+def test_graph(data: Data, expected_num_nodes=98, expected_feat_dim=10):
     assert isinstance(data, Data), "Not a PyG Data object!"
 
     # Check node features
@@ -136,21 +144,7 @@ def test_graph(data: Data, expected_num_nodes=100, expected_feat_dim=9):
 
 if __name__ == "__main__":
     # Example usage
-    base_dir = "C:/Users/piete/Documents/Projects/R-GIANT/data"
+    data_dir = "C:/Users/piete/Documents/Projects/R-GIANT/data"
     patient_id = "0001"
     session_id = "0757"
-    # Load adjacency matrices and feature matrix
-    As_path = f"{base_dir}/matrices/{patient_id}_{session_id}_As.npz"
-    X_path = f"{base_dir}/matrices/{patient_id}_{session_id}_X.npy"
-
-    As = np.load(As_path)  # Convert each adjacency matrix to a torch.Tensor
-    X = np.load(X_path)  # Load feature matrix as a torch.Tensor
-
-    data = build_pyg_data(As, X)
-    data.id = f"{patient_id}_{session_id}"
-
-    test_graph(data)
-    print(data)
-
-    # Save the graph
-    torch.save(data, f"{base_dir}/graphs/{patient_id}_{session_id}_G.pt")
+    build_pyg_data(patient_id, session_id, data_dir)

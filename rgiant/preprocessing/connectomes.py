@@ -5,8 +5,8 @@ import os
 import numpy as np
 import nibabel as nib
 import matplotlib.pyplot as plt
-from filelock import FileLock
-from utils.json_loading import load_special_fs_labels, load_parcellation_mappings
+from rgiant.utils.json_loading import load_special_fs_labels, load_parcellation_mappings
+from rgiant.utils.logging import setup_logger
 from scipy.ndimage import binary_dilation
 from dipy.core.gradients import gradient_table
 from dipy.io.gradients import read_bvals_bvecs
@@ -467,32 +467,29 @@ def visualize_streamlines(streamlines: Streamlines) -> None:
 
 
 
-def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "data/", special_fs_labels: dict = None, fs_idxs2graph_idxs: dict = None, external_logger = None) -> None:
+def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, special_fs_labels: dict = None, fs_idxs2graph_idxs: dict = None, stream = True, log_dir = "logs/", plot_dir = "plots/connectomes/") -> None:
     """
     Full pipeline for building multiview structural connectomes from DWI and parcellation data.
 
     Args:
         patient_id (str): Subject ID (e.g., "s0001").
         session_id (str): Session ID (e.g., "d0757").
-        base_dir (str): Directory where all input data is stored.
+        data_dir (str): Directory where all input data is stored.
     """
 
     # Setup logger
-    if external_logger:
-        logger = external_logger
-    else:
-        logger = setup_debug_logger(patient_id, session_id)
+    logger = setup_logger(name="connectome_logger", prefix="connectomes", patient_id=patient_id, session_id=session_id, stream=stream, log_dir=log_dir)
 
     # Start the timer
     start_time = time.time()
 
     # Define paths to input files
     paths = {
-        "dwi": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "bval": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
-        "smri": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "smri_parc": f"{base_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "dwi": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "bval": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec",
+        "smri": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "smri_parc": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
     }
 
     # Load parcellation mappings for FreeSurfer to reduced labels
@@ -581,7 +578,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
 
     try:
         logger.info("Plotting multiview connectomes")
-        plot_multiview_connectomes(multiview_connectomes, patient_id=patient_id, session_id=session_id)
+        plot_multiview_connectomes(multiview_connectomes, patient_id=patient_id, session_id=session_id, plot_dir=plot_dir)
     except Exception:
         logger.exception("Failed plotting multiview connectomes")
         raise
@@ -589,7 +586,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
     try:
         logger.info("Saving adjacency matrices to intermediate data")
         np.savez_compressed(
-            f"{base_dir}/matrices/{patient_id}_{session_id}_As.npz",
+            f"{data_dir}/matrices/{patient_id}_{session_id}_As.npz",
             **multiview_connectomes
         )
     except Exception:
@@ -601,4 +598,4 @@ def run_connectome_pipeline(patient_id: str, session_id: str, base_dir: str = "d
 
 
 if __name__ == "__main__":
-    run_connectome_pipeline(patient_id="0001", session_id="0757")
+    run_connectome_pipeline(patient_id="0001", session_id="0757", data_dir=r"C:\Users\piete\Documents\Projects\R-GIANT\data")

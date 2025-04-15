@@ -6,7 +6,6 @@ import shutil
 import time
 import datetime
 import subprocess
-import torch
 from dipy.denoise.nlmeans import nlmeans
 from dipy.denoise.noise_estimate import estimate_sigma
 from dipy.io.gradients import read_bvals_bvecs
@@ -14,47 +13,7 @@ from nibabel.processing import resample_from_to, resample_to_output
 from nibabel.funcs import as_closest_canonical
 from scipy.io import loadmat
 from dipy.core.gradients import reorient_bvecs, gradient_table
-from HD_BET.hd_bet_prediction import get_hdbet_predictor, hdbet_predict
-import logging
-
-
-
-def setup_debug_logger(patient_id, session_id):
-    """
-    Setup a logger for debugging.
-    """
-    logger = logging.getLogger(f"debug_cleaning_{patient_id}_{session_id}")
-    logger.setLevel(logging.INFO)
-    
-    # Ensure logger does not propagate to avoid duplicate log entries when a master logger is present.
-    logger.propagate = False  
-
-    # Create the directory if it doesn't exist.
-    os.makedirs("logs/cleaning", exist_ok=True)
-    
-    # Create a timestamped log file name.
-    timestamp = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-    log_filename = f"{patient_id}_{session_id}_{timestamp}.log"
-    log_filepath = os.path.join("logs/cleaning", log_filename)
-    
-    # Setup file handler.
-    file_handler = logging.FileHandler(log_filepath)
-    file_handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    
-    # Check if handlers already exist; if not, add file and stream handlers
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-        
-        # Optional: add a stream handler for console output
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(logging.INFO)
-        stream_handler.setFormatter(formatter)
-        logger.addHandler(stream_handler)
-    
-    return logger
-
+from rgiant.utils.logging import setup_logger
 
 
 def load_data(paths: dict) -> tuple[nib.Nifti1Image, nib.Nifti1Image, np.ndarray, np.ndarray, int]:
@@ -94,7 +53,7 @@ def load_data(paths: dict) -> tuple[nib.Nifti1Image, nib.Nifti1Image, np.ndarray
 
 
 
-def denoise_img(img: nib.Nifti1Image, out_path: str, save: bool = True) -> nib.Nifti1Image:
+def denoise_img(img: nib.Nifti1Image, out_path: str) -> nib.Nifti1Image:
     """
     Applies non-local means denoising to a diffusion MRI volume.
 
@@ -118,16 +77,15 @@ def denoise_img(img: nib.Nifti1Image, out_path: str, save: bool = True) -> nib.N
     # Wrap the denoised data in a new NIfTI image using the original affine and header
     denoised_img = nib.Nifti1Image(denoised_data, img.affine, img.header)
 
-    # Save the image to disk if requested
-    if save:
-        nib.save(denoised_img, out_path)
+    # Save the image to disk
+    nib.save(denoised_img, out_path)
 
     # Return the denoised image
     return denoised_img
 
 
 
-def extract_b0_img(dwi_img: nib.Nifti1Image, bvals: np.ndarray, out_path: str, save: bool = True) -> tuple[nib.Nifti1Image, int]:
+def extract_b0_img(dwi_img: nib.Nifti1Image, bvals: np.ndarray, out_path: str) -> tuple[nib.Nifti1Image, int]:
     """
     Extracts the first b=0 (non-diffusion-weighted) image from a DWI dataset.
 
@@ -151,9 +109,8 @@ def extract_b0_img(dwi_img: nib.Nifti1Image, bvals: np.ndarray, out_path: str, s
     # Create a new NIfTI image using the original affine and header
     b0_img = nib.Nifti1Image(b0_data, dwi_img.affine, dwi_img.header)
 
-    # Save the image to disk if requested
-    if save:
-        nib.save(b0_img, out_path)
+    # Save the image to disk
+    nib.save(b0_img, out_path)
 
     # Return the image and the b0 volume index
     return b0_img, b0_index
@@ -517,7 +474,7 @@ def apply_bvec_rotations(
         # Compute the total rotation matrix for this volume (last to first)
         R_total = R_lps2ras @ R_susceptibility @ R_motion @ R_las2lps
 
-        # Store the result in the composite array
+        # Store the result in the composite array8
         composite_affines[:, :, i] = R_total
 
     # Apply the composite rotation matrices to reorient the b-vectors
@@ -528,46 +485,43 @@ def apply_bvec_rotations(
 
 
 
-def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "data/", save: bool = True, clear_temp: bool = False, external_logger = None) -> None:
+def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "data/", save: bool = True, clear_temp: bool = False, stream = True, log_dir = "logs/") -> None:
 
     # Setup logger
-    if external_logger:
-        logger = external_logger
-    else:
-        logger = setup_debug_logger(patient_id, session_id)
+    logger = setup_logger(name="cleaning_logger", prefix="cleaning", patient_id=patient_id, session_id=session_id, stream=stream, log_dir=log_dir)
 
     start_time = time.time()
     logger.info(f"Starting DWI cleaning pipeline for patient {patient_id} | Session {session_id}")
 
     # Create the directory structure for the patient and session if it doesn't exist yet
-    os.makedirs(f"{base_path}/temp/{patient_id}_{session_id}", exist_ok=True)
-    os.makedirs(f"{base_path}/clean/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{data_dir}/temp/{patient_id}_{session_id}", exist_ok=True)
+    os.makedirs(f"{data_dir}/clean/{patient_id}_{session_id}", exist_ok=True)
 
     paths = {
-        "dwi": f"{base_path}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
-        "bval": f"{base_path}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{base_path}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
-        "smri": f"{base_path}/fs/{patient_id}_{session_id}/brain.mgz",
-        "parc": f"{base_path}/fs/{patient_id}_{session_id}/aparc+aseg.mgz",
+        "dwi": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
+        "bval": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
+        "bvec": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
+        "smri": f"{data_dir}/fs/{patient_id}_{session_id}/brain.mgz",
+        "parc": f"{data_dir}/fs/{patient_id}_{session_id}/aparc+aseg.mgz",
 
-        "denoised_dwi": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
-        "denoised_mc_dwi": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
-        "resampled_smri": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
-        "downsampled_smri": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
-        "denoised_b0": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
-        "denoised_brain_b0": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
-        "denoised_brain_upsampled_b0": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
-        "b0_to_smri": f"{base_path}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz",
+        "denoised_dwi": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised.nii.gz",
+        "denoised_mc_dwi": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_denoised_mc.nii.gz",
+        "resampled_smri": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_resampled.nii.gz",
+        "downsampled_smri": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_smri_downsampled.nii.gz",
+        "denoised_b0": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised.nii.gz",
+        "denoised_brain_b0": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain.nii.gz",
+        "denoised_brain_upsampled_b0": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_denoised_brain_upsampled.nii.gz",
+        "b0_to_smri": f"{data_dir}/temp/{patient_id}_{session_id}/{patient_id}_{session_id}_b0_to_smri.nii.gz",
 
-        "corrected_dwi": f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
-        "downsampled_parc": f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
-        "rotated_bvec": f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec"
+        "corrected_dwi": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_corrected.nii.gz",
+        "downsampled_parc": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_parc_downsampled.nii.gz",
+        "rotated_bvec": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec"
     }
 
     # Move the bvals file to the clean_mri directory
     try:
         logger.info("Moving bvals file to clean directory")
-        shutil.copy(paths["bval"], f"{base_path}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval")
+        shutil.copy(paths["bval"], f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval")
     except Exception:
         logger.exception("Failed to move bvals file to clean directory")
         return
@@ -581,14 +535,14 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
 
     try:
         logger.info("Step 1: Denoising DWI")
-        denoised_dwi_img = denoise_img(img=dwi_img, out_path=paths["denoised_dwi"], save=save)
+        denoised_dwi_img = denoise_img(img=dwi_img, out_path=paths["denoised_dwi"])
     except Exception:
         logger.exception("Failed at Step 1: Denoising DWI")
         return
 
     try:
         logger.info("Step 2: Extracting b=0 image")
-        denoised_b0_img, b0_index = extract_b0_img(dwi_img=denoised_dwi_img, bvals=bvals, out_path=paths["denoised_b0"], save=save)
+        denoised_b0_img, b0_index = extract_b0_img(dwi_img=denoised_dwi_img, bvals=bvals, out_path=paths["denoised_b0"])
     except Exception:
         logger.exception("Failed at Step 2: Extracting b=0 image")
         return
@@ -688,7 +642,7 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
     if clear_temp:
         try:
             logger.info("Clearing temporary files")
-            shutil.rmtree(f"{base_path}/temp/{patient_id}_{session_id}")
+            shutil.rmtree(f"{data_dir}/temp/{patient_id}_{session_id}")
         except:
             logger.exception("Failed to clear temporary files")
 
@@ -698,4 +652,11 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, base_path: str = "da
 
 # Example use case for debugging or running directly
 if __name__ == "__main__":
-    run_cleaning_pipeline(patient_id="0001", session_id="0757", clear_temp=True)
+    run_cleaning_pipeline(
+        patient_id="0001", 
+        session_id="0757", 
+        data_dir=r"C:\Users\piete\Documents\Projects\R-GIANT\data",
+        clear_temp=True, 
+        save=False,
+        stream=True
+        )

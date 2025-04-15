@@ -194,10 +194,9 @@ def encode_pup_features(X: np.array, suvr_values: dict, fs_names2graph_idxs: dic
 def extract_node_features(
         patient_id: str,
         session_id: str,
-        base_dir: str = "C:/Users/piete/Documents/Projects/R-GIANT/data/",
-        fs_idxs2graph_idxs: dict = None,
-        fs_names2graph_idxs: dict = None,
-        fluid_labels: dict = None
+        data_dir: str,
+        mappings: dict = None,
+        special_labels: dict = None
 ):
     """
     Extract node features from FreeSurfer segmentation stats and save them to a numpy file.
@@ -210,7 +209,7 @@ def extract_node_features(
     Parameters:
         patient_id (str): The ID of the patient (e.g., "0001").
         session_id (str): The session ID for the patient (e.g., "0757").
-        base_dir (str): The base directory where the data is stored. Defaults to
+        data_dir (str): The base directory where the data is stored. Defaults to
                         "C:/Users/piete/Documents/Projects/R-GIANT/data/".
         fs_idxs2graph_idxs (dict): A mapping from FreeSurfer segment IDs to reduced IDs for sub-cortical regions.
         ctx_names2reduced (dict): A mapping from FreeSurfer cortical structure names to reduced IDs.
@@ -221,7 +220,7 @@ def extract_node_features(
 
     Outputs:
         - A numpy file containing the node feature matrix is saved to:
-          `{base_dir}/intermediate/{patient_id}_{session_id}_node_features.npy`.
+          `{data_dir}/intermediate/{patient_id}_{session_id}_node_features.npy`.
         - The matrix is printed to the console for verification.
 
     Node Feature Matrix (X):
@@ -239,6 +238,17 @@ def extract_node_features(
             9: PIB-SUVR (PET Unified Pipeline (PUP): Pitssburgh Compound-B standardized uptake value ratio)
 
     """
+    if mappings == None:
+        mappings = load_parcellation_mappings()
+    fs_idxs2graph_idxs = mappings["fs_idxs2graph_idxs"]
+    fs_names2graph_idxs = mappings["fs_names2graph_idxs"]
+
+    if special_labels == None:
+        special_labels = load_special_fs_labels()
+    fluid_labels = special_labels["fluid_labels"]
+
+
+    
     # Build empty feature matrix with shape (n_nodes, n_features)
     n_nodes = len(fs_idxs2graph_idxs)
     n_features = 10 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv, PIB-SUVR, AV45-SUVR
@@ -248,15 +258,15 @@ def extract_node_features(
     mappings = load_parcellation_mappings()
 
     # Extract asegs stats and estimated Total Intracranial Volume (eTIV) by parsing aseg.stats
-    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{base_dir}/fs/{patient_id}_{session_id}/aseg.stats")
+    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{data_dir}/fs/{patient_id}_{session_id}/aseg.stats")
 
     # Encode the sub cortical features from the parsed siub cortical segmentation stats into the node feature matrix X
-    X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs_idxs2graph_idxs=mappings["fs_idxs2graph_idxs"], fluid_labels=fluid_labels)
+    X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs_idxs2graph_idxs=fs_idxs2graph_idxs, fluid_labels=fluid_labels)
 
     # Extract aparc stats by parsing lh.aparc.stats and rh.aparc.stats
     aparc_stats = parse_aparc_stats(
-        lh_parc_path=f"{base_dir}/fs/{patient_id}_{session_id}/lh.aparc.stats",
-        rh_parc_path=f"{base_dir}/fs/{patient_id}_{session_id}/rh.aparc.stats"
+        lh_parc_path=f"{data_dir}/fs/{patient_id}_{session_id}/lh.aparc.stats",
+        rh_parc_path=f"{data_dir}/fs/{patient_id}_{session_id}/rh.aparc.stats"
     )
 
     # Encode the cortical features from the parsed cortical parcellation stats into the node feature matrix X
@@ -264,42 +274,29 @@ def extract_node_features(
 
     # Extract PET features from PUP files
     suvr_values = parse_pup_files(
-        pup_dir=f"{base_dir}/pup/{patient_id}_{session_id}/", 
-        fs_names2graph_idxs=load_parcellation_mappings()["fs_names2graph_idxs"]
+        pup_dir=f"{data_dir}/pup/{patient_id}_{session_id}/", 
+        fs_names2graph_idxs=fs_names2graph_idxs
         )
     
     X = encode_pup_features(X, suvr_values, fs_names2graph_idxs)
 
     # Print the first 5 rows of the node feature matrix X for inspection
-    print("First 5 rows of the node feature matrix X:")
-    print(X[:5, :])
+    # print("First 5 rows of the node feature matrix X:")
+    # print(X[:-5, :])
 
     # Save the node feature matrix X to a numpy file
-    os.makedirs(f"{base_dir}/matrices/", exist_ok=True)
-    np.save(f"{base_dir}/matrices/{patient_id}_{session_id}_X.npy", X)
-    np.set_printoptions(precision=4, suppress=True)
+    os.makedirs(f"{data_dir}/matrices/", exist_ok=True)
+    np.save(f"{data_dir}/matrices/{patient_id}_{session_id}_X.npy", X)
 
 
 
 # Example usage:
 if __name__ == "__main__":
-    # Load mappings and special labels
-    mappings = load_parcellation_mappings()
-    special_labels = load_special_fs_labels()
     # Extract node features
     extract_node_features(
         patient_id="0001",
         session_id="0757",
-        base_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/",
-        fs_idxs2graph_idxs=mappings["fs_idxs2graph_idxs"],
-        fs_names2graph_idxs=mappings["fs_names2graph_idxs"],
-        fluid_labels=special_labels["fluid_labels"]
+        data_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/",
     )
 
-    # # Example usage for parsing pup files
-    # pup_dir = "C:/Users/piete/Documents/Projects/R-GIANT/packed_data/OAS30001_PIB_d2438/OAS30001_PIB_PUPTIMECOURSE_d2438/DATA/pet_proc"
-    # suvr_values = parse_pup_files(pup_dir, fs_names2graph_idxs=mappings["fs_names2graph_idxs"])
-    # print("Parsed SUVR values:")
-    # for roi, value in suvr_values.items():
-    #     print(f"{roi}: {value}")
 
