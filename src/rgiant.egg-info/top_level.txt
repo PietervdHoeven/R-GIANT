@@ -1,5 +1,0 @@
-batch_scripts
-preprocessing
-scripts
-unpacking
-utils

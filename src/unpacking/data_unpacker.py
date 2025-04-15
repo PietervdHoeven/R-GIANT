@@ -143,7 +143,7 @@ def unpack_pup(packed_dir, target_dir, pup_ids2mr_ids, remove=False):
             pup_p_id, pup_s_id = get_ids(session_name, is_pup=True)
             p_id, s_id = pup_ids2mr_ids[(pup_p_id, pup_s_id)]
         except KeyError:
-            print(f"❗ No matching MR session found for {session_name}")
+            print(f"No matching MR session found for {session_name}")
             continue
 
         new_session_dir = os.path.join(target_dir, f"{p_id}_{s_id}")
