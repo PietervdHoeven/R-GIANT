@@ -1,0 +1,8 @@
+dipy==1.10.0
+nibabel==5.3.2
+numpy<2.0
+scipy==1.15.2
+matplotlib==3.10.1
+HD_BET==2.0.1
+antspyx==0.5.4
+fury==0.12.0

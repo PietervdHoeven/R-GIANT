@@ -1,3 +1,18 @@
+Metadata-Version: 2.4
+Name: rgiant
+Version: 0.1.0
+Summary: R-GIANT: A connectome and preprocessing pipeline for neuroimaging DWI data.
+Author-email: Pieter van der Hoeven <pietervanderhoeven98@gmail.com>
+Description-Content-Type: text/markdown
+Requires-Dist: dipy==1.10.0
+Requires-Dist: nibabel==5.3.2
+Requires-Dist: numpy<2.0
+Requires-Dist: scipy==1.15.2
+Requires-Dist: matplotlib==3.10.1
+Requires-Dist: HD_BET==2.0.1
+Requires-Dist: antspyx==0.5.4
+Requires-Dist: fury==0.12.0
+
 R-GIANT INSTALLATION AND USAGE GUIDE
 
 This guide explains how to install and run the R-GIANT package for connectome extraction and graph generation using diffusion and structural MRI data. It covers setting up the Python environment, installing dependencies including GPU-accelerated PyTorch and its extensions, and running the command line interface for data preprocessing and graph assembly.
@@ -100,27 +115,27 @@ Once installed, you can use the command line interface provided by cli.py.
 
 Example: run cleaning pipeline
 
-rgiant-cli clean --participant-id 0001 --session-id 0757 --data-dir /path/to/data --clear-temp
+python -m rgiant.cli cleaning --participant-id 0001 --session-id 0757 --data-dir /path/to/data --clear-temp
 
 Example: run connectome pipeline
 
-rgiant-cli connectome --participant-id 0001 --session-id 0757 --data-dir /path/to/data
+python -m rgiant.cli connectome --participant-id 0001 --session-id 0757 --data-dir /path/to/data
 
 Example: extract node features
 
-rgiant-cli nodes --participant-id 0001 --session-id 0757 --data-dir /path/to/data
+python -m rgiant.cli nodes --participant-id 0001 --session-id 0757 --data-dir /path/to/data
 
 Example: assemble graph
 
-rgiant-cli graph --participant-id 0001 --session-id 0757 --data-dir /path/to/data
+python -m rgiant.cli graph --participant-id 0001 --session-id 0757 --data-dir /path/to/data
 
 To view all available commands:
 
-rgiant-cli --help
+python -m rgiant.cli --help
 
 To view help for a specific subcommand:
 
-rgiant-cli connectome --help
+python -m rgiant.cli connectome --help
 
 
 SECTION 9: CLEAN UNINSTALL

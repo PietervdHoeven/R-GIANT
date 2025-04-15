@@ -1,0 +1,10 @@
+README.md
+pyproject.toml
+rgiant/__init__.py
+rgiant/cli.py
+rgiant.egg-info/PKG-INFO
+rgiant.egg-info/SOURCES.txt
+rgiant.egg-info/dependency_links.txt
+rgiant.egg-info/entry_points.txt
+rgiant.egg-info/requires.txt
+rgiant.egg-info/top_level.txt
