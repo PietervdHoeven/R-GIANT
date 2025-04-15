@@ -1,39 +1,44 @@
-# Python / build artifacts
+# Python cache
 __pycache__/
 *.py[cod]
 *.so
-*.ipynb_checkpoints/
+*.pyd
+
+# Local folders (not tracked by Git, but usable on your PC)
+logs/
+data/
+plots/
+*.log
+
+# Neuroimaging and derived files
+*.nii
+*.nii.gz
+*.mgz
+*.bval
+*.bvec
+*.csv
+
+# Environments
+.env/
 .venv/
 env/
 venv/
 
-# Logs
-logs/
-!logs/.gitkeep
-!logs/cleaning/.gitkeep
-!logs/connectomes/.gitkeep
-!logs/graphs/.gitkeep
-!logs/nodes/.gitkeep
-!logs/labels/.gitkeep
+# Jupyter Notebooks
+.ipynb_checkpoints/
 
-# Data - keep structure, ignore contents
-
-# Ignore everything inside data/
-data/*
-
-# But keep all directories
-!data/**/
-!data/.gitkeep
-data/**/*
-
-# Also keep .gitkeep files inside subfolders
-!data/**/.gitkeep
-
-# Keep CSVs at root of /data
-!data/*.csv
-
-
-# OS / Editor files
+# OS & editor stuff
 .DS_Store
 Thumbs.db
-~$*
+.vscode/
+.idea/
+*.swp
+
+# Archive/output files
+*.zip
+*.tar.gz
+*.tar
+*.gz
+*.pickle
+*.pt
+*.h5
