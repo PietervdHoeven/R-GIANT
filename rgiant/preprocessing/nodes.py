@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import re
-from src.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
+from rgiant.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
 
 def parse_aseg_stats(aseg_path: str):
     """
