@@ -1,14 +1,19 @@
 # Python cache
 __pycache__/
 *.py[cod]
-*.so
-*.pyd
+*$py.class
 
 # Local folders (not tracked by Git, but usable on your PC)
 logs/
 data/
 plots/
 *.log
+
+# Egg info
+*.egg-info/
+*.egg
+dist/
+build/
 
 # Neuroimaging and derived files
 *.nii
@@ -17,12 +22,16 @@ plots/
 *.bval
 *.bvec
 *.csv
+*.npz
 
 # Environments
 .env/
 .venv/
 env/
 venv/
+rgiant-venv/
+.rgiant-venv/
+.env.bak/
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
@@ -33,6 +42,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.sublime-project
+*.sublime-workspace
 
 # Archive/output files
 *.zip
@@ -42,3 +53,19 @@ Thumbs.db
 *.pickle
 *.pt
 *.h5
+
+# PyInstaller
+*.spec
+
+# Logs and runtime files
+*.tmp
+*.temp
+*.bak
+
+# Test coverage and reports
+htmlcov/
+.tox/
+.coverage
+coverage.xml
+.cache
+.pytest_cache/
