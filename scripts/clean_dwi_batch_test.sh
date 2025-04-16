@@ -17,7 +17,7 @@ source $HOME/rgiant-venv/bin/activate
 
 # Working directories
 SRC_DATA_DIR=$HOME/R-GIANT/data
-SCRATCH_BASE=/scratch-node/$USER
+SCRATCH_BASE=/shared-node/$USER
 DEST_DATA_DIR=$HOME/R-GIANT/data_test_clean
 INPUT_LIST=$HOME/R_GIANT/rgiant/scripts/input_list.txt
 
