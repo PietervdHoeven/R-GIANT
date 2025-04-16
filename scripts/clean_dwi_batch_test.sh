@@ -17,10 +17,11 @@ module purge
 source $HOME/rgiant-venv/bin/activate
 
 # Working directories
+PROJECT_ROOT=$(pwd)
 SRC_DATA_DIR=$HOME/R-GIANT/data
 SCRATCH_BASE=/scratch-shared/$USER
 DEST_DATA_DIR=$HOME/R-GIANT/data_test_clean
-INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/id_list.txt
+INPUT_LIST=$PROJECT_ROOT/rgiant/scripts/id_list.txt
 
 mkdir -p $SCRATCH_BASE/data $SCRATCH_BASE/logs $SCRATCH_BASE/slurm_logs
 
