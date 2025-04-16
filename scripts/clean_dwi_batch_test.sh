@@ -1,12 +1,13 @@
 #!/bin/bash
 #SBATCH --job-name=clean_rgiant
-#SBATCH --partition=gcn
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:1
 #SBATCH --mem=480G
 #SBATCH --time=00:20:00
+#SBATCH --constraint=scratch-node
 #SBATCH --output=/scratch-node/$USER/slurm_logs/slurm_%j.out
 #SBATCH --error=/scratch-node/$USER/slurm_logs/slurm_%j.err
 
