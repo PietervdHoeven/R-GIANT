@@ -8,8 +8,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=00:20:00
 #SBATCH --constraint=scratch-node
-#SBATCH --output=/scratch-node/$USER/slurm_logs/slurm_%j.out
-#SBATCH --error=/scratch-node/$USER/slurm_logs/slurm_%j.err
+#SBATCH --output=$HOME/R-GIANT/slurm_logs/slurm_%j.out
+#SBATCH --error=$HOME/R-GIANT/slurm_logs/slurm_%j.err
 
 # ==== 1. SETUP ====
 
@@ -40,8 +40,8 @@ for i in $(seq 1 10); do
     rgiant.cli clean \
     --participant-id $PARTICIPANT_ID \
     --session-id $SESSION_ID \
-    --data-dir $SCRATCH_DIR/data \
-    --log-dir $SCRATCH_DIR/logs \
+    --data-dir $HOME/R-GIANT/data \
+    --log-dir $HOME/R-GIANT/logs \
     --verbose &
 
 done
