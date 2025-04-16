@@ -1,10 +1,9 @@
 #!/bin/bash
-#SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
-#SBATCH --gpus-per-node=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gpus-per-node=2
 #SBATCH --partition=gpu_mig
-#SBATCH --time=01:00:00
+#SBATCH --time=00:30:00
 #SBATCH --output=array_%A_%a.out
 #SBATCH --error=array_%A_%a.err
 #SBATCH --array=1-10    # Replace <N> with the total number of lines in your ids_list.txt
