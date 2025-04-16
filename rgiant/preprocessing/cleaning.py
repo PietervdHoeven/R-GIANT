@@ -497,9 +497,9 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
     os.makedirs(f"{data_dir}/clean/{patient_id}_{session_id}", exist_ok=True)
 
     paths = {
-        "dwi": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.nii.gz",
-        "bval": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval",
-        "bvec": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bvec",
+        "dwi": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}.nii.gz",
+        "bval": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}.bval",
+        "bvec": f"{data_dir}/mr/{patient_id}_{session_id}/{patient_id}_{session_id}.bvec",
         "smri": f"{data_dir}/fs/{patient_id}_{session_id}/brain.mgz",
         "parc": f"{data_dir}/fs/{patient_id}_{session_id}/aparc+aseg.mgz",
 
