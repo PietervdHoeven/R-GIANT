@@ -19,7 +19,7 @@ from dipy.tracking import utils
 from dipy.tracking.streamline import Streamlines, values_from_volume
 from dipy.tracking.streamlinespeed import length
 from dipy.tracking.stopping_criterion import BinaryStoppingCriterion
-from dipy.direction import DeterministicMaximumDirectionGetter
+from dipy.direction import DeterministicMaximumDirectionGetter, ProbabilisticDirectionGetter
 from dipy.segment.clustering import QuickBundles
 from dipy.tracking.utils import target, connectivity_matrix
 
@@ -179,7 +179,7 @@ def generate_streamlines(
     """
     # Define seed points in high-FA white matter regions
     seed_mask = wm_mask & (fa_data > fa_thresh)
-    seeds = utils.seeds_from_mask(seed_mask, affine=dwi_affine, density=2)
+    seeds = utils.seeds_from_mask(seed_mask, affine=dwi_affine, density=3)
 
     # Load orientation sphere for directional modeling
     sphere = get_sphere(name=sphere_str)
@@ -188,10 +188,14 @@ def generate_streamlines(
     odf_data = dti_fit.odf(sphere)
     pmf_data = odf_data.clip(min=0)
 
-    # Create a direction getter using the deterministic peak of the ODF
+    # # Create a direction getter using the deterministic peak of the ODF
     det_dg = DeterministicMaximumDirectionGetter.from_pmf(
         pmf_data, max_angle=30.0, sphere=sphere
     )
+    # prob_dg = ProbabilisticDirectionGetter.from_pmf(
+    #     pmf_data, max_angle=30.0, sphere=sphere
+    # )
+
 
     # Define stopping criterion as remaining within the white matter
     stopping_criterion = BinaryStoppingCriterion(wm_mask)
@@ -417,7 +421,7 @@ def multiview_connectivities(
 
 
 
-def plot_multiview_connectomes(views_dict: dict, patient_id: str, session_id: str, save_dir: str = "plots/connectivity_matrices/") -> None:
+def plot_multiview_connectomes(views_dict: dict, patient_id: str, session_id: str, plot_dir: str = "plots/connectivity_matrices/") -> None:
     """
     Saves multiple connectivity matrices side by side in a single image file using log-scaled color maps.
 
@@ -442,8 +446,8 @@ def plot_multiview_connectomes(views_dict: dict, patient_id: str, session_id: st
     plt.tight_layout()
 
     # Save all views into a single file
-    os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(os.path.join(save_dir, f"{patient_id}_{session_id}_multiview_connectomes.png"))
+    os.makedirs(plot_dir, exist_ok=True)
+    plt.savefig(os.path.join(plot_dir, f"{patient_id}_{session_id}_multiview_connectomes.png"))
     plt.close()
 
 
@@ -572,6 +576,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, spe
             num_rois=reduced_parcellation.max()
         )
         multiview_connectomes['count'] = connectome
+        multiview_connectomes['norm_count'] = connectome / connectome.sum()
     except Exception:
         logger.exception("Failed computing multiview connectomes")
         raise
