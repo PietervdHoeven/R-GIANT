@@ -20,7 +20,7 @@ source $HOME/rgiant-venv/bin/activate
 SRC_DATA_DIR=$HOME/R-GIANT/data
 SCRATCH_BASE=/scratch-shared/$USER
 DEST_DATA_DIR=$HOME/R-GIANT/data_test_clean
-INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/input_list.txt
+INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/id_list.txt
 
 mkdir -p $SCRATCH_BASE/data $SCRATCH_BASE/logs $SCRATCH_BASE/slurm_logs
 
@@ -57,3 +57,5 @@ mkdir -p $DEST_DATA_DIR
 cp -r $SCRATCH_BASE/data/* $DEST_DATA_DIR/
 cp -r $SCRATCH_BASE/logs $HOME/R-GIANT/
 cp -r $SCRATCH_BASE/slurm_logs $HOME/R-GIANT/
+
+echo "finished!"
