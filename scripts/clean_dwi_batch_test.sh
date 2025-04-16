@@ -8,25 +8,26 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=00:20:00
 #SBATCH --constraint=scratch-node
-#SBATCH --output=$HOME/R-GIANT/slurm_logs/slurm_%j.out
-#SBATCH --error=$HOME/R-GIANT/slurm_logs/slurm_%j.err
+#SBATCH --output=slurm_logs/slurm_%j.out
+#SBATCH --error=slurm_logs/slurm_%j.err
 
 # ==== 1. SETUP ====
 
+module purge
 source $HOME/rgiant-venv/bin/activate
 
 # Working directories
 SRC_DATA_DIR=$HOME/R-GIANT/data
-SCRATCH_BASE=/shared-node/$USER
+SCRATCH_BASE=/scratch-shared/$USER
 DEST_DATA_DIR=$HOME/R-GIANT/data_test_clean
-INPUT_LIST=$HOME/R_GIANT/rgiant/scripts/input_list.txt
+INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/input_list.txt
 
-mkdir -p $SCRATCH_BASE/logs $SCRATCH_BASE/slurm_logs
+mkdir -p $SCRATCH_BASE/data $SCRATCH_BASE/logs $SCRATCH_BASE/slurm_logs
 
 # ==== 2. COPY INPUT DATA TO SCRATCH ====
 
 echo "Copying input data to scratch..."
-cp -r $SRC_DATA_DIR $SCRATCH_BASE
+cp -r $SRC_DATA_DIR/* $SCRATCH_BASE/data/
 
 # ==== 3. RUN CLEANING PIPELINE IN PARALLEL ====
 
@@ -37,11 +38,11 @@ for i in $(seq 1 10); do
     PARTICIPANT_ID=$(echo $LINE | cut -d'_' -f1)
     SESSION_ID=$(echo $LINE | cut -d'_' -f2)
 
-    rgiant.cli clean \
+    rgiant-cli clean \
     --participant-id $PARTICIPANT_ID \
     --session-id $SESSION_ID \
-    --data-dir $HOME/R-GIANT/data \
-    --log-dir $HOME/R-GIANT/logs \
+    --data-dir $SCRATCH_BASE/data \
+    --log-dir $SCRATCH_BASE/logs \
     --verbose &
 
 done
@@ -52,6 +53,7 @@ echo "All cleaning jobs completed."
 # ==== 4. COPY RESULTS BACK TO HOME ====
 
 echo "Copying results back to home..."
-cp -r $SCRATCH_DIR/data $DEST_DATA_DIR/
-cp -r $SCRATCH_DIR/logs $HOME/R_GIANT/
-cp -r $SCRATCH_DIR/slurm_logs $HOME/R_GIANT/
+mkdir -p $DEST_DATA_DIR
+cp -r $SCRATCH_BASE/data/* $DEST_DATA_DIR/
+cp -r $SCRATCH_BASE/logs $HOME/R-GIANT/
+cp -r $SCRATCH_BASE/slurm_logs $HOME/R-GIANT/
