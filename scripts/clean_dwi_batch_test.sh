@@ -2,6 +2,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=128
+#SBATCH --gpus-per-node=1
 #SBATCH --partition=gpu_mig
 #SBATCH --time=01:00:00
 #SBATCH --output=array_%A_%a.out
