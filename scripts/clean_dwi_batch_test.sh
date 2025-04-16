@@ -27,7 +27,7 @@ mkdir -p $SCRATCH_BASE/data $SCRATCH_BASE/logs $SCRATCH_BASE/slurm_logs
 # ==== 2. COPY INPUT DATA TO SCRATCH ====
 
 echo "Copying input data to scratch..."
-cp -r $SRC_DATA_DIR/* $SCRATCH_BASE/data/
+# cp -r $SRC_DATA_DIR/* $SCRATCH_BASE/data/
 
 # ==== 3. RUN CLEANING PIPELINE IN PARALLEL ====
 
@@ -38,10 +38,14 @@ for i in $(seq 1 10); do
     PARTICIPANT_ID=$(echo $LINE | cut -d'_' -f1)
     SESSION_ID=$(echo $LINE | cut -d'_' -f2)
 
+    echo $LINE
+    echo $PARTICIPANT_ID
+    echo $SESSION_ID
+
     rgiant-cli clean \
     --participant-id $PARTICIPANT_ID \
     --session-id $SESSION_ID \
-    --data-dir $SCRATCH_BASE/data \
+    --data-dir $SRC_DATA_DIR \
     --log-dir $SCRATCH_BASE/logs \
     --verbose &
 
@@ -54,7 +58,7 @@ echo "All cleaning jobs completed."
 
 echo "Copying results back to home..."
 mkdir -p $DEST_DATA_DIR
-cp -r $SCRATCH_BASE/data/* $DEST_DATA_DIR/
+#cp -r $SCRATCH_BASE/data/* $DEST_DATA_DIR/
 cp -r $SCRATCH_BASE/logs $HOME/R-GIANT/
 cp -r $SCRATCH_BASE/slurm_logs $HOME/R-GIANT/
 
