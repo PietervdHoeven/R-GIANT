@@ -39,17 +39,7 @@ On Linux/macOS:
 python3 -m venv rgiant-venv source rgiant-venv/bin/activate
 
 
-SECTION 4: INSTALL REQUIRED PYTHON DEPENDENCIES
-
-
-Install the package and all dependencies. Run this command from the R-GIANT root directory:
-
-pip install -e .
-
-This installs R-GIANT in editable mode along with core dependencies defined in pyproject.toml.
-
-
-SECTION 5: INSTALL GPU-ACCELERATED TORCH AND EXTENSIONS
+SECTION 4: INSTALL GPU-ACCELERATED TORCH AND EXTENSIONS
 
 
 Install PyTorch and all necessary geometric libraries compiled for CUDA 11.8.
@@ -67,6 +57,16 @@ pip install torch-scatter==2.1.2+pt23cu118 -f https://data.pyg.org/whl/torch-2.3
 These wheels include the necessary CUDA binaries, so there is no need to install the full CUDA Toolkit. Just make sure the NVIDIA driver on your system is compatible with CUDA 11.8. Both approaches work for windows and linux.
 
 
+SECTION 5: INSTALL REQUIRED PYTHON DEPENDENCIES
+
+
+Install the package and all dependencies. Run this command from the R-GIANT root directory:
+
+pip install -e .
+
+This installs R-GIANT in editable mode along with core dependencies defined in pyproject.toml.
+
+
 SECTION 6: OPTIONAL - VERIFY INSTALLATION
 
 
@@ -76,21 +76,11 @@ pip list
 
 You should see rgiant, torch, dipy, nibabel, HD-BET, and other packages listed.
 
+You can test whether you are CUDA enabled by opening a python console and running the following:
 
-SECTION 7: ENVIRONMENT VARIABLES AND PATHS
-
-
-If needed, you can set environment variables to control certain behaviors or paths. For example:
-
-On Windows (PowerShell):
-
-$env:VAR_NAME="value"
-
-On Linux/macOS (bash):
-
-export VAR_NAME="value"
-
-You can also include custom installation scripts inside the install/ directory and trigger them with scripts/post_install.py.
+import torch
+print(torch.cuda.is_available())        # Should return True
+print(torch.cuda.get_device_name(0))    # Should return the GPU device name
 
 
 SECTION 8: USAGE

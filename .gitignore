@@ -8,6 +8,8 @@ logs/
 data/
 plots/
 *.log
+*.rar
+*.zip
 
 # Egg info
 *.egg-info/
