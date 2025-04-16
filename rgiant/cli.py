@@ -14,7 +14,7 @@ def parse_args():
     cleaning_parser.add_argument("--session-id", required=True, help="Session ID.")
     cleaning_parser.add_argument("--data-dir", required=True, help="Directory containing input data.")
     cleaning_parser.add_argument("--clear-temp", action="store_true", help="Clear temporary files after processing.")
-    cleaning_parser.add_argument("--log-dir", default="logs/default", help="Directory for log files.")
+    cleaning_parser.add_argument("--log-dir", default="logs", help="Directory for log files.")
     cleaning_parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
 
     # Connectomes pipeline
@@ -22,8 +22,8 @@ def parse_args():
     connectomes_parser.add_argument("--participant-id", required=True, help="Participant ID.")
     connectomes_parser.add_argument("--session-id", required=True, help="Session ID.")
     connectomes_parser.add_argument("--data-dir", required=True, help="Directory containing input data.")
-    connectomes_parser.add_argument("--log-dir", default="logs/default", help="Directory for log files.")
-    connectomes_parser.add_argument("--plot-dir", default="plots/matrices", help="Directory for saving plots.")
+    connectomes_parser.add_argument("--log-dir", default="logs", help="Directory for log files.")
+    connectomes_parser.add_argument("--plot-dir", default="plots", help="Directory for saving plots.")
     connectomes_parser.add_argument("--verbose", action="store_true", help="Enable verbose logging.")
 
     # Graphs pipeline
