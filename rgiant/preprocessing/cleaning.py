@@ -408,6 +408,9 @@ def apply_transformations(
             interpolator='bSpline'
         )
 
+        # Enforce FOV
+        corrected_vol = ants.resample_image_to_target(corrected_vol, smri_ants)
+
         # Store the corrected volume in the result array
         corrected_dwi_data[..., i] = corrected_vol.numpy()
 
@@ -653,10 +656,10 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
 # Example use case for debugging or running directly
 if __name__ == "__main__":
     run_cleaning_pipeline(
-        patient_id="0001", 
-        session_id="0757", 
-        data_dir=r"C:\Users\piete\Documents\Projects\R-GIANT\data",
-        clear_temp=True, 
-        save=False,
+        patient_id="0006", 
+        session_id="2342", 
+        data_dir=r"C:\Users\piete\Documents\development\Projects\R-GIANT\data",
+        clear_temp=False, 
+        save=True,
         stream=True
         )
