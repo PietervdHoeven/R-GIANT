@@ -17,25 +17,23 @@ module purge
 source $HOME/rgiant-venv/bin/activate
 
 # Working directories
-PROJECT_ROOT=$(pwd)
 SRC_DATA_DIR=$HOME/R-GIANT/data
-SCRATCH_BASE=/scratch-shared/$USER
 DEST_DATA_DIR=$HOME/R-GIANT/data_test_clean
-INPUT_LIST=$PROJECT_ROOT/rgiant/scripts/id_list.txt
+INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/id_list.txt
 
-mkdir -p $SCRATCH_BASE/data $SCRATCH_BASE/logs $SCRATCH_BASE/slurm_logs
+mkdir -p $TMPDIR/logs
 
 # ==== 2. COPY INPUT DATA TO SCRATCH ====
 
 echo "Copying input data to scratch..."
-# cp -r $SRC_DATA_DIR/* $SCRATCH_BASE/data/
+cp -r "$SRC_DATA_DIR" "$TMPDIR"
 
 # ==== 3. RUN CLEANING PIPELINE IN PARALLEL ====
 
 echo "Launching cleaning jobs..."
 
 for i in $(seq 1 10); do
-    LINE=$(sed -n "${i}p" $INPUT_LIST)
+    LINE=$(sed -n "${i}p" "$INPUT_LIST")
     PARTICIPANT_ID=$(echo $LINE | cut -d'_' -f1)
     SESSION_ID=$(echo $LINE | cut -d'_' -f2)
 
@@ -46,8 +44,8 @@ for i in $(seq 1 10); do
     rgiant-cli clean \
     --participant-id $PARTICIPANT_ID \
     --session-id $SESSION_ID \
-    --data-dir $SRC_DATA_DIR \
-    --log-dir $SCRATCH_BASE/logs \
+    --data-dir $TMPDIR/data \
+    --log-dir $TMPDIR/logs \
     --verbose &
 
 done
@@ -59,8 +57,7 @@ echo "All cleaning jobs completed."
 
 echo "Copying results back to home..."
 mkdir -p $DEST_DATA_DIR
-#cp -r $SCRATCH_BASE/data/* $DEST_DATA_DIR/
-cp -r $SCRATCH_BASE/logs $HOME/R-GIANT/
-cp -r $SCRATCH_BASE/slurm_logs $HOME/R-GIANT/
+cp -r $TMPDIR/data/* $DEST_DATA_DIR/
+cp -r $TMPDIR/logs $HOME/R-GIANT/
 
 echo "finished!"
