@@ -10,6 +10,8 @@
 
 set -euo pipefail
 
+echo "test!!!!"
+
 # 1) Activate your environment
 echo "[1/6] Activating environment"
 source $HOME/rgiant-venv/bin/activate

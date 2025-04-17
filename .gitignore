@@ -7,6 +7,7 @@ __pycache__/
 logs/
 data/
 plots/
+slurm_logs/
 *.log
 *.rar
 *.zip
