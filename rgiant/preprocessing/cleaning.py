@@ -490,7 +490,7 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
     logger = setup_logger(name="cleaning_logger", prefix="cleaning", patient_id=patient_id, session_id=session_id, stream=stream, log_dir=log_dir)
 
     start_time = time.time()
-    logger.info(f"Starting DWI cleaning pipeline for patient {patient_id} | Session {session_id}")
+    logger.info(f"[{patient_id}-{session_id}]: Starting DWI cleaning pipeline")
 
     # Create the directory structure for the patient and session if it doesn't exist yet
     os.makedirs(f"{data_dir}/temp/{patient_id}_{session_id}", exist_ok=True)
@@ -517,37 +517,36 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
         "rotated_bvec": f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi_rotated.bvec"
     }
 
-    # Move the bvals file to the clean_mri directory
     try:
-        logger.info("Moving bvals file to clean directory")
+        logger.info(f"[{patient_id}-{session_id}]: Moving bvals file to clean directory")
         shutil.copy(paths["bval"], f"{data_dir}/clean/{patient_id}_{session_id}/{patient_id}_{session_id}_dwi.bval")
     except Exception:
-        logger.exception("Failed to move bvals file to clean directory")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed to move bvals file to clean directory")
         return
 
     try:
-        logger.info("Step 0: Loading input data")
+        logger.info(f"[{patient_id}-{session_id}]: Loading input data")
         dwi_img, smri_img, bvals, bvecs, num_volumes = load_data(paths)
     except Exception:
-        logger.exception("Failed at Step 0: Loading input data")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed loading input data")
         return
 
     try:
-        logger.info("Step 1: Denoising DWI")
+        logger.info(f"[{patient_id}-{session_id}]: Denoising DWI")
         denoised_dwi_img = denoise_img(img=dwi_img, out_path=paths["denoised_dwi"])
     except Exception:
-        logger.exception("Failed at Step 1: Denoising DWI")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed denoising DWI")
         return
 
     try:
-        logger.info("Step 2: Extracting b=0 image")
+        logger.info(f"[{patient_id}-{session_id}]: Extracting b=0 image")
         denoised_b0_img, b0_index = extract_b0_img(dwi_img=denoised_dwi_img, bvals=bvals, out_path=paths["denoised_b0"])
     except Exception:
-        logger.exception("Failed at Step 2: Extracting b=0 image")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed extracting b=0 image")
         return
 
     try:
-        logger.info("Step 3: Calculating Motion Correction transformations")
+        logger.info(f"[{patient_id}-{session_id}]: Calculating motion correction transformations")
         mc_transforms, denoised_dwi_ants, denoised_b0_ants = calculate_mc_transformations(
             dwi_ants=ants.image_read(paths["denoised_dwi"]),
             b0_ants=ants.image_read(paths["denoised_b0"]),
@@ -559,18 +558,18 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
             save=save
         )
     except Exception:
-        logger.exception("Failed at Step 3: Motion correction")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed motion correction")
         return
 
     try:
-        logger.info("Step 4: Skull stripping")
+        logger.info(f"[{patient_id}-{session_id}]: Skull stripping")
         denoised_brain_b0_img = skullstrip_img(in_path=paths["denoised_b0"], out_path=paths["denoised_brain_b0"], device="cuda")
     except Exception:
-        logger.exception("Failed at Step 4: Skull stripping")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed skull stripping")
         return
 
     try:
-        logger.info("Step 5: Aligning resolution and FOV")
+        logger.info(f"[{patient_id}-{session_id}]: Aligning resolution and FOV")
         denoised_brain_upsampled_b0_img, resampled_smri_img = align_resolution_and_FOV(
             b0_img=denoised_brain_b0_img,
             smri_img=smri_img,
@@ -578,11 +577,11 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
             smri_out_path=paths["resampled_smri"]
         )
     except Exception:
-        logger.exception("Failed at Step 5: Aligning resolution and FOV")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed aligning resolution and FOV")
         return
 
     try:
-        logger.info("Step 6: Nonlinear registration")
+        logger.info(f"[{patient_id}-{session_id}]: Nonlinear registration")
         nl_registration = calculate_nonlinear_transformations(
             b0_ants=ants.image_read(paths["denoised_brain_upsampled_b0"]),
             smri_ants=ants.image_read(paths["resampled_smri"]),
@@ -592,11 +591,11 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
             save=save
         )
     except Exception:
-        logger.exception("Failed at Step 6: Nonlinear registration")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed nonlinear registration")
         return
 
     try:
-        logger.info("Step 7: Downsampling sMRI and parcellation")
+        logger.info(f"[{patient_id}-{session_id}]: Downsampling sMRI and parcellation")
         downsampled_smri_img, downsampled_parc_img = downsample_smri_and_parcellation(
             smri_img=resampled_smri_img,
             parc_img=nib.load(paths["parc"]),
@@ -604,11 +603,11 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
             parc_out_path=paths["downsampled_parc"]
         )
     except Exception:
-        logger.exception("Failed at Step 7: Downsampling")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed downsampling")
         return
 
     try:
-        logger.info("Step 8: Applying full transformations to DWI volumes")
+        logger.info(f"[{patient_id}-{session_id}]: Applying full transformations to DWI volumes")
         corrected_dwi_img = apply_transformations(
             smri_ants=ants.image_read(paths["downsampled_smri"]),
             dwi_ants=denoised_dwi_ants,
@@ -622,11 +621,11 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
             out_path=paths["corrected_dwi"]
         )
     except Exception:
-        logger.exception("Failed at Step 8: Applying full transformations")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed applying full transformations")
         return
 
     try:
-        logger.info("Step 9: Rotating b-vectors")
+        logger.info(f"[{patient_id}-{session_id}]: Rotating b-vectors")
         apply_bvec_rotations(
             bvals=bvals,
             bvecs=bvecs,
@@ -635,17 +634,19 @@ def run_cleaning_pipeline(patient_id: str, session_id: str, data_dir: str = "dat
             bvecs_out_path=paths["rotated_bvec"]
         )
     except Exception:
-        logger.exception("Failed at Step 9: Rotating b-vectors")
+        logger.exception(f"[{patient_id}-{session_id}]: Failed rotating b-vectors")
         return
-    
+
     if clear_temp:
         try:
-            logger.info("Clearing temporary files")
+            logger.info(f"[{patient_id}-{session_id}]: Clearing temporary files")
             shutil.rmtree(f"{data_dir}/temp/{patient_id}_{session_id}")
         except:
-            logger.exception("Failed to clear temporary files")
+            logger.exception(f"[{patient_id}-{session_id}]: Failed to clear temporary files")
 
-    logger.info(f"Cleaning pipeline completed for patient {patient_id} | session {session_id} in {round(time.time() - start_time, 2)} seconds.")
+    elapsed_time = time.time() - start_time
+    minutes, seconds = divmod(elapsed_time, 60)
+    logger.info(f"[{patient_id}_{session_id}]: DWI cleaned in: {int(minutes):02d}:{int(seconds):02d} (mm:ss).")
 
 
 

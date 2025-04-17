@@ -484,6 +484,8 @@ def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, spe
     # Setup logger
     logger = setup_logger(name="connectome_logger", prefix="connectomes", patient_id=patient_id, session_id=session_id, stream=stream, log_dir=log_dir)
 
+    logger.info(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting connectome pipeline for patient {patient_id}, session {session_id}")
+
     # Start the timer
     start_time = time.time()
 
@@ -507,70 +509,70 @@ def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, spe
     FLUID_LABELS = special_fs_labels["fluid_labels"]
 
     try:
-        logger.info("Loading data")
+        logger.info(f"{patient_id}_{session_id}: Loading data")
         dwi_data, dwi_affine, gtab, fs_parcellation = load_data(paths)
     except Exception:
-        logger.exception("Failed loading data")
+        logger.exception(f"{patient_id}_{session_id}: Failed loading data")
         raise
 
     try:
-        logger.info("Creating white matter masks")
+        logger.info(f"{patient_id}_{session_id}: Creating white matter masks")
         wm_mask, dilated_wm_mask = create_wm_mask(fs_parcellation, WM_LABELS)
     except Exception:
-        logger.exception("Failed creating white matter masks")
+        logger.exception(f"{patient_id}_{session_id}: Failed creating white matter masks")
         raise
 
     try:
-        logger.info("Fitting DTI model")
+        logger.info(f"{patient_id}_{session_id}: Fitting DTI model")
         dti_fit, fa_data, md_data, rd_data, ad_data = fit_dti_model(dwi_data, gtab, dilated_wm_mask)
     except Exception:
-        logger.exception("Failed fitting DTI model")
+        logger.exception(f"{patient_id}_{session_id}: Failed fitting DTI model")
         raise
 
     try:
-        logger.info("Generating streamlines")
+        logger.info(f"{patient_id}_{session_id}: Generating streamlines")
         streamlines = generate_streamlines(dti_fit, dilated_wm_mask, fa_data, dwi_affine)
     except Exception:
-        logger.exception("Failed generating streamlines")
+        logger.exception(f"{patient_id}_{session_id}: Failed generating streamlines")
         raise
 
     try:
-        logger.info("Filtering streamlines by length")
+        logger.info(f"{patient_id}_{session_id}: Filtering streamlines by length")
         streamlines = filter_by_length(streamlines, min_length=20, max_length=300)
     except Exception:
-        logger.exception("Failed filtering streamlines by length")
+        logger.exception(f"{patient_id}_{session_id}: Failed filtering streamlines by length")
         raise
 
     try:
-        logger.info("Performing anatomical filtering")
+        logger.info(f"{patient_id}_{session_id}: Performing anatomical filtering")
         streamlines = filter_anatomical(streamlines, fs_parcellation, dwi_affine, FLUID_LABELS)
     except Exception:
-        logger.exception("Failed anatomical filtering")
+        logger.exception(f"{patient_id}_{session_id}: Failed anatomical filtering")
         raise
 
     try:
-        logger.info("Filtering outliers")
+        logger.info(f"{patient_id}_{session_id}: Filtering outliers")
         streamlines = filter_outliers(streamlines, min_cluster_size=5, threshold=10.0)
     except Exception:
-        logger.exception("Failed filtering outliers")
+        logger.exception(f"{patient_id}_{session_id}: Failed filtering outliers")
         raise
 
     try:
-        logger.info("Reducing parcellation")
+        logger.info(f"{patient_id}_{session_id}: Reducing parcellation")
         reduced_parcellation = preprocess_parcellation(fs_parcellation, fs_idxs2graph_idxs)
     except Exception:
-        logger.exception("Failed reducing parcellation")
+        logger.exception(f"{patient_id}_{session_id}: Failed reducing parcellation")
         raise
 
     try:
-        logger.info("Building streamline count connectome")
+        logger.info(f"{patient_id}_{session_id}: Building streamline count connectome")
         connectome, streamline_mapping = sl_count_connectivity(streamlines, dwi_affine, reduced_parcellation)
     except Exception:
-        logger.exception("Failed building streamline count connectome")
+        logger.exception(f"{patient_id}_{session_id}: Failed building streamline count connectome")
         raise
 
     try:
-        logger.info("Computing multiview connectomes")
+        logger.info(f"{patient_id}_{session_id}: Computing multiview connectomes")
         multiview_connectomes = multiview_connectivities(
             streamline_mapping, dwi_affine, fa_data, md_data, rd_data, ad_data,
             num_rois=reduced_parcellation.max()
@@ -578,27 +580,29 @@ def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, spe
         multiview_connectomes['count'] = connectome
         multiview_connectomes['norm_count'] = connectome / connectome.sum()
     except Exception:
-        logger.exception("Failed computing multiview connectomes")
+        logger.exception(f"{patient_id}_{session_id}: Failed computing multiview connectomes")
         raise
 
     try:
-        logger.info("Plotting multiview connectomes")
+        logger.info(f"{patient_id}_{session_id}: Plotting multiview connectomes")
         plot_multiview_connectomes(multiview_connectomes, patient_id=patient_id, session_id=session_id, plot_dir=plot_dir)
     except Exception:
-        logger.exception("Failed plotting multiview connectomes")
+        logger.exception(f"{patient_id}_{session_id}: Failed plotting multiview connectomes")
         raise
 
     try:
-        logger.info("Saving adjacency matrices to intermediate data")
+        logger.info(f"{patient_id}_{session_id}: Saving adjacency matrices to intermediate data")
         np.savez_compressed(
             f"{data_dir}/matrices/{patient_id}_{session_id}_As.npz",
             **multiview_connectomes
         )
     except Exception:
-        logger.exception("Failed saving adjacency matrices to intermediate data")
+        logger.exception(f"{patient_id}_{session_id}: Failed saving adjacency matrices to intermediate data")
         raise
 
-    logger.info(f"Pipeline completed for patient {patient_id} | session {session_id} in {time.time() - start_time:.2f} seconds.")
+    elapsed_time = time.time() - start_time
+    minutes, seconds = divmod(elapsed_time, 60)
+    logger.info(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {patient_id}_{session_id}: Connectomes built in: {int(minutes):02d}:{int(seconds):02d} (mm:ss).")
 
 
 

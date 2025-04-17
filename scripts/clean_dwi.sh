@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=clean_rgiant
-#SBATCH --partition=gpu_mig
+#SBATCH --partition=gpu_a100
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=9
-#SBATCH --mem=60G
-#SBATCH --time=00:10:00
-#SBATCH --output=$HOME/R-GIANT/logs/slurm_%A_%a.out
-#SBATCH --error =$HOME/R-GIANT/logs/slurm_%A_%a.err
+#SBATCH --cpus-per-task=18
+#SBATCH --mem=120G
+#SBATCH --time=00:02:30
+#SBATCH --output=logs/slurm_%A_%a.out
+#SBATCH --error=logs/slurm_%A_%a.err
 
 set -euo pipefail
 
