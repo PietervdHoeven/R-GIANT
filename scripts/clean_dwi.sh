@@ -15,9 +15,9 @@ echo "[1/6] Activating environment"
 source $HOME/rgiant-venv/bin/activate
 
 # 2) Read the Nth line from id_list.txt
-echo "[2/6] Reading ID from line $((SLURM_ARRAY_TASK_ID+1))"
+echo "[2/6] Reading ID from line $((SLURM_ARRAY_TASK_ID))"
 INPUT_LIST=$HOME/R-GIANT/scripts/id_list.txt
-LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" "$INPUT_LIST" | tr -d '\r')
+LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID))p" "$INPUT_LIST" | tr -d '\r')
 PARTICIPANT_ID=$(echo "$LINE" | cut -d'_' -f1)
 SESSION_ID=$(echo "$LINE" | cut -d'_' -f2)
 echo "    → Participant: $PARTICIPANT_ID, Session: $SESSION_ID"
