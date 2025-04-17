@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=9
 #SBATCH --mem=60G
-#SBATCH --time=00:30:00
+#SBATCH --time=00:10:00
 #SBATCH --output=$HOME/R-GIANT/logs/slurm_%A_%a.out
 #SBATCH --error =$HOME/R-GIANT/logs/slurm_%A_%a.err
 
