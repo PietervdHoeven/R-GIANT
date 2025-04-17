@@ -5,9 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --gres=gpu:1
 #SBATCH --time=00:20:00
-#SBATCH --constraint=scratch-node
 #SBATCH --output=slurm_logs/slurm_%j.out
 #SBATCH --error=slurm_logs/slurm_%j.err
 
@@ -33,13 +31,11 @@ cp -r "$SRC_DATA_DIR" "$TMPDIR"
 echo "Launching cleaning jobs..."
 
 for i in $(seq 1 10); do
-    LINE=$(sed -n "${i}p" "$INPUT_LIST")
+    LINE=$(sed -n "${i}p" "$INPUT_LIST" | tr -d '\r')
     PARTICIPANT_ID=$(echo $LINE | cut -d'_' -f1)
     SESSION_ID=$(echo $LINE | cut -d'_' -f2)
 
-    echo $LINE
-    echo $PARTICIPANT_ID
-    echo $SESSION_ID
+    echo "Parsed: [$PARTICIPANT_ID] - [$SESSION_ID]"
 
     rgiant-cli clean \
     --participant-id $PARTICIPANT_ID \
