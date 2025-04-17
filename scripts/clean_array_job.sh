@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=clean_rgiant
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_mig
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=9
+#SBATCH --mem=64G
 #SBATCH --time=00:30:00
 #SBATCH --constraint=scratch-node
 #SBATCH --array=0-2                     # ← Adjust this range to match your list
@@ -16,7 +16,7 @@ set -euo pipefail
 
 source $HOME/rgiant-venv/bin/activate
 
-INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/id_list.txt
+INPUT_LIST=$HOME/R-GIANT/scripts/id_list.txt
 LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "$INPUT_LIST" | tr -d '\r')
 
 PARTICIPANT_ID=$(echo "$LINE" | cut -d'_' -f1)
