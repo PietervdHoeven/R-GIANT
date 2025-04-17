@@ -3,7 +3,6 @@
 #SBATCH --partition=gpu_mig
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=9
-#SBATCH --mem=64G
 #SBATCH --time=00:30:00
 #SBATCH --constraint=scratch-node
 #SBATCH --array=0-2                     # ← Adjust this range to match your list
