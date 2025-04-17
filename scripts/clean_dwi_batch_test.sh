@@ -19,7 +19,7 @@ source $HOME/rgiant-venv/bin/activate
 # Working directories
 SRC_DATA_DIR=$HOME/R-GIANT/data
 DEST_DATA_DIR=$HOME/R-GIANT/data_test_clean
-INPUT_LIST=$HOME/R-GIANT/rgiant/scripts/id_list.txt
+INPUT_LIST=$HOME/R-GIANT/scripts/id_list.txt
 
 mkdir -p $TMPDIR/logs
 
