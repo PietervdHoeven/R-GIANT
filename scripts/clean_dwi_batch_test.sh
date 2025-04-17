@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=clean_rgiant
-#SBATCH --partition=thin
+#SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=8G
+#SBATCH --mem=32G
 #SBATCH --time=00:20:00
 #SBATCH --output=slurm_logs/slurm_%j.out
 #SBATCH --error=slurm_logs/slurm_%j.err
