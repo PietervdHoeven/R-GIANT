@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=build_connectome
+#SBATCH --job-name=test_connectome_array
 #SBATCH --partition=gpu_a100
-#SBATCH --cpus-per-task=72
+#SBATCH --cpus-per-task=70
 #SBATCH --mem=480G
 #SBATCH --gres=gpu:1
-#SBATCH --time=03:30:00
-#SBATCH --output=logs/slurm_%A.out
-#SBATCH --error=logs/slurm_%A.err
+#SBATCH --time=10:00:00
+#SBATCH --output=logs/slurm_%A_%a.out
+#SBATCH --error=logs/slurm_%A_%a.err
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ TMP_MTRX=$TMPDIR/matrices
 TMP_CLEAN=$TMPDIR/clean
 TMP_LIST=$TMPDIR/id_list.txt
 
-MAX_JOBS=72
+BATCH_SIZE=70
 
 # make all the scratch dirs we’ll use
 mkdir -p \
@@ -44,24 +44,42 @@ rsync -ah "$IN_LIST" "$TMP_LIST"
 # (trailing slash on source = “contents only”)
 rsync -ah "${IN_DATA_CLEAN}/" "$TMP_CLEAN/"
 
+TASK_ID=${SLURM_ARRAY_TASK_ID}     # now 0…10
+# For TASK_ID=0 you want lines 1…72,
+# for TASK_ID=1 lines 73…144, etc.
+START=$(( TASK_ID * BATCH_SIZE + 1 ))
+END=$(( (TASK_ID + 1) * BATCH_SIZE ))
+
+if (( END > 742 )); then
+  END=742
+fi
+
+
 # 4) Flood CPUs
 echo "[4/6] Launch connectome pipelines"
+echo "Launching from line $START up to and including line $END"
 wait_for_cpu() {
-    while [ "$(jobs -rp | wc -l)" -ge "$MAX_JOBS" ]; do
+    while [ "$(jobs -rp | wc -l)" -ge "$BATCH_SIZE" ]; do
         sleep 1
     done
 }
 
-# launch up to MAX_JOBS pipelines, then stop
-COUNTER=0
+LINE_NO=0
 while IFS=_ read -r P_ID S_ID; do
-    if [ "$COUNTER" -ge "$MAX_JOBS" ]; then
-        echo "Reached maximum of $MAX_JOBS jobs, not adding any more jobs."
-        break
+    LINE_NO=$(( LINE_NO + 1 ))
+
+    # skip any IDs before our START or after our END
+    if (( LINE_NO < START || LINE_NO > END )); then
+        continue
     fi
 
     wait_for_cpu
-    echo "Launching: $P_ID $S_ID"
+    echo "Launching: $P_ID $S_ID from line $LINE_NO"
+    # echo "--subject $P_ID"
+    # echo "--session $S_ID"
+    # echo "--data-dir $TMPDIR"
+    # echo "--log-dir $TMP_LOGS"
+    # echo "--plot-dir $TMP_PLOTS"
     rgiant-cli connectome \
         --participant-id "$P_ID" \
         --session-id "$S_ID" \
@@ -69,8 +87,7 @@ while IFS=_ read -r P_ID S_ID; do
         --log-dir "$TMP_LOGS" \
         --plot-dir "$TMP_PLOTS" \
         --verbose &
-    COUNTER=$((COUNTER + 1))
-done < "$TMP_LIST"
+    done < "$TMP_LIST"
 
 wait
 

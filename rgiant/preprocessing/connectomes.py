@@ -484,7 +484,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, spe
     # Setup logger
     logger = setup_logger(name="connectome_logger", prefix="connectomes", patient_id=patient_id, session_id=session_id, stream=stream, log_dir=log_dir)
 
-    logger.info(f"[{patient_id}_{session_id}] Starting connectome pipeline")
+    logger.info(f"[{patient_id}_{session_id}]:!!! Starting connectome pipeline !!!")
 
     # Start the timer
     start_time = time.time()
@@ -602,7 +602,7 @@ def run_connectome_pipeline(patient_id: str, session_id: str, data_dir: str, spe
 
     elapsed_time = time.time() - start_time
     minutes, seconds = divmod(elapsed_time, 60)
-    logger.info(f"[{patient_id}_{session_id}]: Connectomes built in: {int(minutes):02d}:{int(seconds):02d} (mm:ss).")
+    logger.info(f"[{patient_id}_{session_id}]:!!! Connectomes built in: {int(minutes):02d}:{int(seconds):02d} (mm:ss). !!!")
 
 
 
