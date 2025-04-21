@@ -102,6 +102,12 @@ def build_pyg_data(patient_id, session_id, data_dir, label=None):
 
 
 
+def label_pyg_data(data: Data, label: int):
+    data.y = torch.tensor([label], dtype=torch.long)
+    return data
+
+
+
 def test_graph(data: Data, expected_num_nodes=98, expected_feat_dim=10):
     assert isinstance(data, Data), "Not a PyG Data object!"
 
