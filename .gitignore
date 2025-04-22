@@ -12,6 +12,9 @@ slurm_logs/
 *.rar
 *.zip
 
+# Allow all files under the rgiant directory
+!rgiant/
+
 # Egg info
 *.egg-info/
 *.egg
