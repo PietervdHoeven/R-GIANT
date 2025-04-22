@@ -11,7 +11,7 @@ pd.set_option('display.width', None)
 #    keeping only the session identifier, the time of visit,
 #    and the raw diagnosis string (dx1).
 # ─────────────────────────────────────────────────────────────────────────────
-meta_df = pd.read_excel('data/meta_data.xlsx', engine='openpyxl')
+meta_df = pd.read_excel('data/connectome_pipeline/meta_data.xlsx', engine='openpyxl')
 meta_df = meta_df[['OASIS_session_label', 'days_to_visit', 'dx1']]
 print(f"1) Loaded {len(meta_df)} total visits from metadata")
 
@@ -85,7 +85,7 @@ print(meta_df['propagated_diagnosis_label'].value_counts().sort_index())
 #    the closest diagnosis for each scan.
 # ─────────────────────────────────────────────────────────────────────────────
 # 5.1) Load and split
-final_df = pd.read_csv('data/final_sessions.csv', header=None, names=['session_label'])
+final_df = pd.read_csv('data/connectome_pipeline/final_sessions.csv', header=None, names=['session_label'])
 final_df[['patient_id','session_days']] = (
     final_df['session_label']
       .str.split('_', expand=True)
