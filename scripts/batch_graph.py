@@ -1,7 +1,7 @@
 from rgiant.preprocessing.graphs import build_pyg_data
 
-session_ids_file = "data/final_sessions.txt"
-data_dir = "data/"
+session_ids_file = "data/connectome_pipeline/final_sessions.txt"
+data_dir = "data/connectome_pipeline/"
 
 print("RUNNING")
 

@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import re
-from rgiant.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
+from rgiant.utils.loading import load_parcellation_mappings, load_special_fs_labels
 
 def parse_aseg_stats(aseg_path: str):
     """
@@ -48,14 +48,15 @@ def parse_aseg_stats(aseg_path: str):
                 "SegId": fields[1],  # Keep as string for consistency with mappings
                 "Volume_mm3": float(fields[3]),
                 "StructName": fields[4],  # Keep as string for consistency with mappings
+                "eTIV": etiv
             }
             rows.append(row_dict)
 
-    return (rows, etiv)
+    return rows
 
 
 
-def encode_sub_ctx_features(X: np.array, aseg_stats: list[dict], eTIV: float, fs_idxs2graph_idxs: dict, fluid_labels: list) -> np.array:
+def encode_sub_ctx_features(X: np.array, aseg_stats: list[dict], fs_idxs2graph_idxs: dict, fluid_labels: list) -> np.array:
     """
     Encode sub-cortical features from aseg.stats into the node feature matrix X.
     
@@ -76,7 +77,8 @@ def encode_sub_ctx_features(X: np.array, aseg_stats: list[dict], eTIV: float, fs
                 X[idx, 2] = 1  # index 2=True iff sub-cortical structure is fluid
             else:
                 X[idx, 0] = 1  # index 0=True iff sub-ctx-struct is normal
-            X[idx, 3] = row["Volume_mm3"] / eTIV  # Volume_mm3 normalized by eTIV
+            X[idx, 3] = row["Volume_mm3"]  # Volume_mm3 normalized by eTIV
+            X[idx, 10] = row["eTIV"]
     return X
 
 
@@ -229,13 +231,14 @@ def extract_node_features(
             0: is_sub_ctx (1 if sub-cortical structure, 0 otherwise)
             1: is_ctx (1 if cortical structure, 0 otherwise)
             2: is_fluid (1 if fluid compartment, 0 otherwise)
-            3: Volume_mm3 (FreeSurfer (FS): sub-cortical ROI volume normalized by eTIV)
+            3: Volume_mm3 (FreeSurfer (FS): sub-cortical ROI volume
             4: SurfArea (FS: cortical surface area)
             5: GrayVol (FS: cortical gray matter volume)
             6: ThickAvg (FS: cortical ROI average thickness)
             7: ThickStd (FS: thickness standard deviation)
             8: MeanCurv (FS: Cortical ROI mean curvature)
             9: PIB-SUVR (PET Unified Pipeline (PUP): Pitssburgh Compound-B standardized uptake value ratio)
+            10: eTIV (FS: estimated Total Intracranial Volume)
 
     """
     if mappings == None:
@@ -251,17 +254,17 @@ def extract_node_features(
     
     # Build empty feature matrix with shape (n_nodes, n_features)
     n_nodes = len(fs_idxs2graph_idxs)
-    n_features = 10 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv, PIB-SUVR, AV45-SUVR
+    n_features = 11 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv, PIB-SUVR, AV45-SUVR
     X = np.zeros((n_nodes, n_features))
 
     # Load parcellation label mappings
     mappings = load_parcellation_mappings()
 
     # Extract asegs stats and estimated Total Intracranial Volume (eTIV) by parsing aseg.stats
-    aseg_stats, eTIV = parse_aseg_stats(aseg_path=f"{data_dir}/fs/{patient_id}_{session_id}/aseg.stats")
+    aseg_stats = parse_aseg_stats(aseg_path=f"{data_dir}/fs/{patient_id}_{session_id}/aseg.stats")
 
     # Encode the sub cortical features from the parsed siub cortical segmentation stats into the node feature matrix X
-    X = encode_sub_ctx_features(X, aseg_stats, eTIV, fs_idxs2graph_idxs=fs_idxs2graph_idxs, fluid_labels=fluid_labels)
+    X = encode_sub_ctx_features(X, aseg_stats, fs_idxs2graph_idxs=fs_idxs2graph_idxs, fluid_labels=fluid_labels)
 
     # Extract aparc stats by parsing lh.aparc.stats and rh.aparc.stats
     aparc_stats = parse_aparc_stats(

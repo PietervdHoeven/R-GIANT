@@ -1,8 +1,8 @@
 from rgiant.preprocessing.nodes import extract_node_features
-from rgiant.utils.json_loading import load_parcellation_mappings, load_special_fs_labels
+from rgiant.utils.loading import load_parcellation_mappings, load_special_fs_labels
 
-session_ids_file = "data/final_sessions.txt"
-data_dir = "data/"
+session_ids_file = "data/connectome_pipeline/final_sessions.txt"
+data_dir = "data/connectome_pipeline/"
 
 mappings = load_parcellation_mappings()
 special_labels = load_special_fs_labels()

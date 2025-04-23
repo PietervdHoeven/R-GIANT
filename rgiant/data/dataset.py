@@ -1,5 +1,4 @@
 # rgiant/data/dataset.py
-
 import os
 import glob
 import torch
@@ -18,9 +17,10 @@ class ConnectomeDataset(InMemoryDataset):
     def __init__(
             self,
             root: str,
-            processed_filename: str = "all_graphs.pt",
+            processed_filename: str,
             transform=None,
-            pre_transform=None
+            pre_transform=None,
+            force_reload=False
             ):
         """
         Args:
@@ -29,7 +29,7 @@ class ConnectomeDataset(InMemoryDataset):
             pre_transform: run once on each Data in `process()` (e.g. fold-specific normalization)
         """
         self.processed_filename = processed_filename
-        super().__init__(root, transform, pre_transform)
+        super().__init__(root, transform, pre_transform, force_reload)
         # load the collated dataset into memory
         path = os.path.join(self.processed_dir, self.processed_filename)
         self.data, self.slices = torch.load(path)
@@ -49,10 +49,10 @@ class ConnectomeDataset(InMemoryDataset):
         graph_list = []
         # adjust the pattern if your PT files live in subfolders
         for pt_path in glob.glob(os.path.join(self.raw_dir, "*_G.pt")):
-            graph = torch.load(pt_path)
+            g = torch.load(pt_path)
             if self.pre_transform:
-                graph = self.pre_transform(graph)
-            graph_list.append(graph)
+                g = self.pre_transform(g)
+            graph_list.append(g)
 
         # collate into InMemoryDataset format
         data, slices = self.collate(graph_list)

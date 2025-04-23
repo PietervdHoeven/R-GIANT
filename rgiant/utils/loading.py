@@ -1,5 +1,6 @@
 import json
 import os
+import yaml
 from pathlib import Path
 
 def load_parcellation_mappings():
@@ -31,3 +32,10 @@ def load_patient_session_ids():
     with open(SESSIONS_FILE, 'r') as f:
         sessions = json.load(f)
     return sessions
+
+def load_config(path: str) -> dict:
+    """
+    Load a YAML configuration file.
+    """
+    with open(path, 'r') as f:
+        return yaml.safe_load(f)
