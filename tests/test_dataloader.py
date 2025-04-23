@@ -123,32 +123,32 @@ def test_normalised_dataset():
         9: "PIB-SUVR"
     }
 
-    # for roi_idx in [0, 10, 20, 30, 40, 50, 60, 70, 80]:
-    #     # 6) Collect values for this ROI index
-    #     values_by_feature = {f: [] for f in feature_indices}
-    #     for g in norm_ds:
-    #         x = g.x.numpy()
-    #         for f in feature_indices:
-    #             vals = x[roi_idx, f]
-    #             nonzero_vals = vals[vals != 0] if hasattr(vals, "__iter__") else ([vals] if vals != 0 else [])
-    #             values_by_feature[f].extend(nonzero_vals)
+    for roi_idx in [10, 40, 70, 80]:
+        # 6) Collect values for this ROI index
+        values_by_feature = {f: [] for f in feature_indices}
+        for g in norm_ds:
+            x = g.x.numpy()
+            for f in feature_indices:
+                vals = x[roi_idx, f]
+                nonzero_vals = vals[vals != 0] if hasattr(vals, "__iter__") else ([vals] if vals != 0 else [])
+                values_by_feature[f].extend(nonzero_vals)
 
-    #     # Plot grid for this ROI
-    #     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    #     fig.suptitle(f"ROI index: {roi_idx}", fontsize=16)
-    #     axes = axes.flatten()
-    #     for ax, (f, label) in zip(axes, feature_indices.items()):
-    #         ax.hist(values_by_feature[f], bins=50)
-    #         ax.set_title(f"{label} (feat {f})")
-    #         ax.set_xlabel("Z-scored value")
-    #         ax.set_ylabel("Count")
+        # Plot grid for this ROI
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        fig.suptitle(f"ROI index: {roi_idx}", fontsize=16)
+        axes = axes.flatten()
+        for ax, (f, label) in zip(axes, feature_indices.items()):
+            ax.hist(values_by_feature[f], bins=16)
+            ax.set_title(f"{label} (feat {f})")
+            ax.set_xlabel("Z-scored value")
+            ax.set_ylabel("Count")
 
-    #     plt.tight_layout(rect=[0, 0, 1, 0.96])
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
 
     # ------------------------------------------------------------------
     #  Gather every edge-weight for every relation from the normalised dataset
     # ------------------------------------------------------------------
-    weights_by_rel = defaultdict(list)        # rel-id ➜ list-of-1D-tensors
+    weights_by_rel = defaultdict(list)        # rel-id -> list-of-1D-tensors
     for g in norm_ds:
         w, r = g.edge_weight, g.edge_type
         for rel in r.unique().tolist():

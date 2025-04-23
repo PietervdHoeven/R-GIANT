@@ -1,7 +1,7 @@
 # data/transforms.py
 import torch
 from torch_geometric.data import Data, InMemoryDataset
-from typing import Callable, Optional, Tuple, List
+from typing import Callable, Tuple, List
 
 
 class ZScoreFeaturesPerROI:
@@ -79,33 +79,6 @@ class Compose:
 
 
 
-# def compute_feature_stats_per_node(dataset: InMemoryDataset) -> tuple[torch.Tensor, torch.Tensor]:
-#     """
-#     Compute mean and std per node (each node corresponds to a neural ROI) across all graphs in the dataset.
-
-#     Args:
-#         dataset: a PyG InMemoryDataset (no transforms applied) of length G,
-#                  where each item g.x has shape [N, F].
-
-#     Returns:
-#         mean: Tensor of shape [N, F]
-#         std:  Tensor of shape [N, F]
-#     """
-#     # 1) Collect all feature matrices
-#     #    List of G tensors, each [N, F]
-#     all_x = [g.x for g in dataset]
-
-#     # 2) Stack into [G, N, F]
-#     all_x = torch.stack(all_x, dim=0)
-
-#     # 3) Compute per-ROI (i.e. along the G axis)
-#     means = all_x.mean(dim=0)  # [N, F]
-#     stds  = all_x.std(dim=0)   # [N, F]
-
-#     return means, stds
-
-
-
 def compute_feature_stats_per_node(
     dataset: InMemoryDataset,
     one_hot_dims: int = 3,
@@ -144,45 +117,51 @@ def compute_feature_stats_per_node(
 
 
 
-def compute_edge_stats_per_relation(dataset: InMemoryDataset) -> tuple[torch.Tensor, torch.Tensor]:
+def _winsorise(t: torch.Tensor, p=0.01):
+    lo, hi = t.quantile(p), t.quantile(1-p)
+    return t.clamp(lo, hi)
+
+
+
+def compute_edge_stats_per_relation(
+    dataset: InMemoryDataset,
+    p_winsor: float = 0.05
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Compute per-relation mean and std of edge weights over all graphs in `dataset`.
+    Per-relation mean / std, after winsorising the strongest `p_winsor` tails.
 
-    Args:
-        dataset: a PyG InMemoryDataset whose items have:
-                 - data.edge_weight: Tensor[E]
-                 - data.edge_type:   Tensor[E] with values in {0,...,R-1}
+    Parameters
+    ----------
+    dataset   : InMemoryDataset  - graphs with .edge_weight & .edge_type
+    p_winsor  : float            - fraction of each tail to clamp (default 1 %)
 
-    Returns:
-        means: Tensor of shape [R], the mean weight for each relation
-        stds:  Tensor of shape [R], the std. deviation for each relation
+    Returns
+    -------
+    means : [R] tensor
+    stds  : [R] tensor   (std is clamped ≥ 1e-6 to avoid /0)
     """
-    # 1) Infer number of relations
-    max_r = 0
-    for data in dataset:
-        max_r = max(max_r, int(data.edge_type.max().item()))
-    R = max_r + 1
+    # 1) figure out how many relation IDs we have
+    max_rel = 0
+    for g in dataset:
+        max_rel = max(max_rel, int(g.edge_type.max()))
+    R = max_rel + 1
 
-    # 2) Collect weights per relation
-    weights_per_rel = [[] for _ in range(R)]
-    for data in dataset:
-        w = data.edge_weight
-        r = data.edge_type
-        for rel in range(R):
-            mask = (r == rel)
-            if mask.any():
-                weights_per_rel[rel].append(w[mask])
+    # 2) gather edge weights per relation
+    buckets = [[] for _ in range(R)]
+    for g in dataset:
+        w, r = g.edge_weight, g.edge_type
+        for rel in r.unique().tolist():
+            buckets[rel].append(w[r == rel])
 
-    # 3) Compute statistics
-    means = torch.zeros(R, dtype=torch.float)
-    stds  = torch.zeros(R, dtype=torch.float)
-    for rel, w_list in enumerate(weights_per_rel):
-        if w_list:
-            all_w = torch.cat(w_list, dim=0)
-            means[rel] = all_w.mean()
-            stds[rel]  = all_w.std(unbiased=False)
+    # 3) winsorise → concat → mean / std
+    means, stds = [], []
+    for rel, chunks in enumerate(buckets):
+        vec = torch.cat(chunks, dim=0)
+        vec = _winsorise(vec, p=p_winsor)
+        means.append(vec.mean())
+        stds .append(vec.std(unbiased=False).clamp(min=1e-6))
 
-    return means, stds
+    return torch.stack(means), torch.stack(stds)
 
 
 
@@ -196,5 +175,5 @@ def get_zscore_transform(dataset: InMemoryDataset) -> Callable[[Data], Data]:
     return Compose([
         ZScoreFeaturesPerROI(means_x, stds_x),
         ZScoreEdgeWeightsPerRelation(means_w, stds_w),
-        ClipEdgeWeights(-5.0, 5.0) 
+        ClipEdgeWeights(low=-4.0, high=4.0)
     ])

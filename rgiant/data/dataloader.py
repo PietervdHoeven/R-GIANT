@@ -49,14 +49,14 @@ def make_split_loaders(
     indices = np.arange(len(raw_dataset))   # Array for all the indices of each graph
 
     # 2) Split indices: We first splinter off the test subset and then splinter off the validation subset
-    idx_train, idx_test, y_train, y_test = train_test_split(
+    idx_train, idx_test, y_train, _ = train_test_split(
         indices, labels,
         test_size=test_size,
         stratify=labels,    # We split based on the labels. So 10% of the graphs will contain a same ratio HC:MCI/AD
         random_state=random_state
     )
     val_size = val_size / (1 - test_size) # Update the val_size to correct for the remaining datapoints after the first split
-    idx_train, idx_val, y_train, y_val = train_test_split(
+    idx_train, idx_val, y_train, _ = train_test_split(
         idx_train, y_train,
         test_size=val_size,
         stratify=y_train,
