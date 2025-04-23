@@ -8,7 +8,7 @@ __pycache__/
 
 # Local folders (not tracked by Git, but usable on your PC)
 logs/
-data/
+/data/
 plots/
 slurm_logs/
 *.log
@@ -53,6 +53,7 @@ Thumbs.db
 *.swp
 *.sublime-project
 *.sublime-workspace
+~$*
 
 # Archive/output files
 *.zip
