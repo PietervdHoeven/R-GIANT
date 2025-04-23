@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Don't ignore any python file anywhere
+!**/*.py
+
 # Local folders (not tracked by Git, but usable on your PC)
 logs/
 data/
