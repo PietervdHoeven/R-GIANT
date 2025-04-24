@@ -77,8 +77,8 @@ def encode_sub_ctx_features(X: np.array, aseg_stats: list[dict], fs_idxs2graph_i
                 X[idx, 2] = 1  # index 2=True iff sub-cortical structure is fluid
             else:
                 X[idx, 0] = 1  # index 0=True iff sub-ctx-struct is normal
-            X[idx, 3] = row["Volume_mm3"]  # Volume_mm3 normalized by eTIV
-            X[idx, 10] = row["eTIV"]
+            X[idx, 3] = row["Volume_mm3"]  # Volume_mm3
+    X[:, 10] = aseg_stats[0]["eTIV"]
     return X
 
 
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     extract_node_features(
         patient_id="0001",
         session_id="0757",
-        data_dir="C:/Users/piete/Documents/Projects/R-GIANT/data/",
+        data_dir="C:/Users/piete/Documents/Development/Projects/R-GIANT/data/connectome_pipeline",
     )
 
 

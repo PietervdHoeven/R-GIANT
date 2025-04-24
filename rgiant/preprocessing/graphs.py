@@ -2,7 +2,7 @@ import torch
 from torch_geometric.data import Data
 import numpy as np
 
-def adjacency_to_edge_list_torch(A_r: torch.Tensor, relation_type: int):
+def adjacency_to_edge_attributes(A_r: torch.Tensor, relation_type: int):
     """
     Converts one adjacency matrix to edge_index, edge_type, and edge_weight
     using torch operations.
@@ -37,50 +37,78 @@ def adjacency_to_edge_list_torch(A_r: torch.Tensor, relation_type: int):
 
 def build_pyg_data(patient_id, session_id, data_dir, label=None):
     """
-    Constructs a PyTorch Geometric `Data` object from adjacency matrices, node features, 
-    and an optional label.
-    Args:
-        As (dict): A dictionary where keys are relation types (e.g., integers) and values 
-            are adjacency matrices (2D numpy arrays or similar) representing the graph 
-            structure for each relation type. Each adjacency matrix should have shape 
-            `[num_nodes, num_nodes]`.
-        X (numpy.ndarray or similar): A 2D array of node features with shape `[num_nodes, num_features]`.
-        label (int, optional): An optional integer label for the graph. Defaults to `None`.
-    Returns:
-        torch_geometric.data.Data: A PyTorch Geometric `Data` object containing:
-            - `x` (torch.Tensor): Node feature matrix of shape `[num_nodes, num_features]`.
-            - `edge_index` (torch.Tensor): Edge indices in COO format of shape `[2, E_total]`, 
-              where `E_total` is the total number of edges across all relation types.
-            - `edge_type` (torch.Tensor): Edge type identifiers of shape `[E_total]`.
-            - `edge_weight` (torch.Tensor): Edge weights of shape `[E_total]`.
-            - `y` (torch.Tensor, optional): Graph label tensor of shape `[1]` if `label` is provided.
-    Notes:
-        - The adjacency matrices in `As` are converted to edge lists using the 
-          `adjacency_to_edge_list_torch` function, which is assumed to return edge indices, 
-          edge types, and edge weights.
-        - All inputs are converted to PyTorch tensors with appropriate data types.
+    Create a PyTorch Geometric Data object from multi-metric adjacency matrices and node features.
+
+    This routine loads:
+        1. A `.npz` archive of R adjacency matrices (one per DWI metric) for a given subject/session,
+            each of shape [N, N].
+        2. A `[N, F]` NumPy array of node features for the same subject/session.
+    It then:
+        • Identifies every unique node-pair (i, j) present in any metric matrix.
+        • Builds a single edge_index tensor of shape [2, E], listing those pairs once.
+        • Packs the R metric values for each edge into an `edge_attr` tensor of shape [E, R].
+        • Attaches the node-feature matrix `x`, an optional label `y`, and an identifier `id`.
+
+    Parameters
+    ----------
+    patient_id : str
+        Identifier for the subject.
+    session_id : str
+        Identifier for the scanning session.
+    data_dir : str
+        Base directory containing:
+            - `matrices/{patient_id}_{session_id}_As.npz`
+            - `matrices/{patient_id}_{session_id}_X.npy`
+    label : int, optional
+        Class label for the graph (e.g., diagnosis). If provided, stored in `data.y`.
+
+    Returns
+    -------
+    torch_geometric.data.Data
+        A Data object with attributes:
+            - x         (Tensor[N, F])   : Node feature matrix.
+            - edge_index (LongTensor[2, E]) : COO indices of all unique edges.
+            - edge_attr  (Tensor[E, R])  : Edge-metric vectors (one column per adjacency matrix).
+            - y         (LongTensor[1], optional) : Graph label, if `label` given.
+            - id        (str)            : Combined patient+session identifier.
+
+    Notes
+    -----
+    • The order of the R metrics in `edge_attr[:, r]` follows the sorted keys of the `.npz` file,
+        ensuring consistent column-to-metric mapping across runs.
+    • All inputs and outputs use `torch.float32` for features and attributes, and `torch.long`
+        for indices and labels.
+    • Existing parallel-edge logic is replaced: each node-pair appears exactly once, carrying
+        a multi-dimensional feature vector.
     """
     As_path = f"{data_dir}/matrices/{patient_id}_{session_id}_As.npz"
     X_path = f"{data_dir}/matrices/{patient_id}_{session_id}_X.npy"
 
+    # load all matrices from the .np* files
     As = np.load(As_path)  
     X = np.load(X_path)
 
-    all_edge_indices = []
-    all_edge_types = []
-    all_edge_weights = []
+    for k in sorted(As.files):
+        print(k)
+    # Load the individual adjacency matrices into tensors and store them in a list of tensors list[tensor[N,N]]
+    # sort keys to fix metric order (e.g. [FA, MD, RD, AD, LEN, COUNT] -> ad count fa length md norm_count rd
+    As = [torch.tensor(As[k], dtype=torch.float32) for k in sorted(As.files)]
 
-    for r, A in enumerate(As.values()):
-        A = torch.tensor(A, dtype=torch.float32)
-        edge_index_r, edge_type_r, edge_weight_r = adjacency_to_edge_list_torch(A, r)
-        all_edge_indices.append(edge_index_r)
-        all_edge_types.append(edge_type_r)
-        all_edge_weights.append(edge_weight_r)
 
-    # Concatenate everything
-    edge_index = torch.cat(all_edge_indices, dim=1)       # shape [2, E_total]
-    edge_type = torch.cat(all_edge_types, dim=0)          # shape [E_total]
-    edge_weight = torch.cat(all_edge_weights, dim=0)      # shape [E_total]
+    # Find every unique edge from ROI_i to ROI_j, these are the [i,j] in A that have nonzero values
+    edge_coords = torch.cat([A.nonzero(as_tuple=False) for A in As], dim=0)  # A.nonzero returns a [E,2] tensor with on each row the column and row indices of nonzero elements in A
+    edge_coords   = torch.unique(edge_coords, dim=0)   # shape [E, 2], We remove duplicate edges that have been found
+
+    # build edge_index and edge_attr
+    src_coords, dst_coords = edge_coords[:,0], edge_coords[:,1] # take two lists, one for the source index of each edge and one for destination index for each edge
+    edge_index = torch.stack([src_coords, dst_coords], dim=0)  # Stack them into a tensor of shape [2,E], a tensor list indicating the source and destination node of each edge
+    E = edge_coords.size(0);  R = len(As)
+    edge_attr = torch.zeros(E, R, dtype=torch.float32)  # Initialise the edge_attr tensor that will contain all the edge attributes, i.e., the metrics for each edge
+
+    # fill each metric column
+    for r, A in enumerate(As):
+        # gather metrics A[i,j] for each edge (i,j)
+        edge_attr[:, r] = A[src_coords, dst_coords]
 
     # Cast node features to torch
     X = torch.tensor(X, dtype=torch.float32)  # Ensure float dtype
@@ -88,8 +116,7 @@ def build_pyg_data(patient_id, session_id, data_dir, label=None):
     data = Data(
         x = X,  # Ensure float dtype
         edge_index = edge_index,
-        edge_type = edge_type,
-        edge_weight = edge_weight,
+        edge_attr = edge_attr,
     )
 
     if label is not None:
@@ -98,7 +125,8 @@ def build_pyg_data(patient_id, session_id, data_dir, label=None):
     data.id = f"{patient_id}_{session_id}"
 
     # Save the graph
-    torch.save(data, f"{data_dir}/graphs/{patient_id}_{session_id}_G.pt")
+    #torch.save(data, f"{data_dir}/graphs/{patient_id}_{session_id}_G.pt")
+
 
 
 
@@ -108,41 +136,55 @@ def label_pyg_data(data: Data, label: int):
 
 
 
-def test_graph(data: Data, expected_num_nodes=98, expected_feat_dim=10):
+def test_graph(
+    data: Data,
+    expected_num_nodes: int = 98,
+    expected_feat_dim: int = 11,
+    expected_edge_dim: int = 7,   # number of metrics in edge_attr
+):
+    # — basic type check —
     assert isinstance(data, Data), "Not a PyG Data object!"
 
-    # Check node features
+    # — node features —
     assert hasattr(data, 'x'), "Missing node features!"
-    assert data.x.shape == (expected_num_nodes, expected_feat_dim), f"Unexpected shape for x: {data.x.shape}"
-    assert data.x.dtype == torch.float32, f"x should be float, got {data.x.dtype}"
+    assert data.x.shape == (expected_num_nodes, expected_feat_dim), \
+        f"Unexpected x shape: {data.x.shape}"
+    assert data.x.dtype == torch.float32, \
+        f"x should be float32, got {data.x.dtype}"
 
-    # Check edge_index
+    # — edge_index —
     assert hasattr(data, 'edge_index'), "Missing edge_index!"
-    assert data.edge_index.shape[0] == 2, "edge_index should have shape [2, E]"
-    E = data.edge_index.shape[1]
+    ei = data.edge_index
+    assert ei.ndim == 2 and ei.shape[0] == 2, \
+        f"edge_index should be [2, E], got {ei.shape}"
+    E = ei.shape[1]
     assert E > 0, "No edges found!"
-    assert data.edge_index.dtype == torch.long, "edge_index should be long"
+    assert ei.dtype == torch.long, \
+        f"edge_index should be long, got {ei.dtype}"
 
-    # Check edge_weight and edge_type
-    for name in ['edge_weight', 'edge_type']:
-        assert hasattr(data, name), f"Missing {name}!"
-        tensor = getattr(data, name)
-        assert tensor.shape[0] == E, f"{name} must match number of edges"
-        assert tensor.dtype in [torch.float32, torch.long], f"{name} has unexpected dtype: {tensor.dtype}"
+    # — edge_attr —
+    assert hasattr(data, 'edge_attr'), "Missing edge_attr!"
+    ea = data.edge_attr
+    # must be a 2D tensor with E rows and expected_edge_dim columns
+    assert ea.ndim == 2, f"edge_attr must be 2D, got {ea.ndim}D"
+    assert ea.shape[0] == E, \
+        f"edge_attr rows ({ea.shape[0]}) must match number of edges ({E})"
+    assert ea.shape[1] == expected_edge_dim, \
+        f"edge_attr should have {expected_edge_dim} columns, got {ea.shape[1]}"
+    assert ea.dtype == torch.float32, \
+        f"edge_attr should be float32, got {ea.dtype}"
 
-    # Optional: check metadata
-    try:
-        assert hasattr(data, 'id'), "Missing session_id for tracking"
-    except AssertionError:
-        print("No session_id found, but this is optional.")
+    # — optional metadata —
+    if not hasattr(data, 'id'):
+        print("Warning: no `data.id` field (optional)")
 
-    # Optional: try sending to GPU
+    # — optional GPU test —
     try:
         data_cuda = data.cuda()
         assert data_cuda.is_cuda, "Data did not move to GPU!"
         print("Data moved to GPU successfully.")
     except Exception as e:
-        print(f"Could not move to GPU: {e}")
+        print(f"Could not move to GPU (OK if no GPU): {e}")
 
     print("Graph passed all checks!")
 
@@ -150,7 +192,8 @@ def test_graph(data: Data, expected_num_nodes=98, expected_feat_dim=10):
 
 if __name__ == "__main__":
     # Example usage
-    data_dir = "C:/Users/piete/Documents/Projects/R-GIANT/data"
+    data_dir = "C:/Users/piete/Documents/Development/Projects/R-GIANT/data/connectome_pipeline"
     patient_id = "0001"
     session_id = "0757"
-    build_pyg_data(patient_id, session_id, data_dir)
+    graph = build_pyg_data(patient_id, session_id, data_dir)
+    test_graph(graph)

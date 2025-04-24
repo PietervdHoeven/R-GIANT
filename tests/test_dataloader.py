@@ -5,7 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from rgiant.data.dataset import ConnectomeDataset
-from rgiant.data.transforms import get_zscore_transform
+#from rgiant.data.transforms import get_zscore_transform as get_transforms
+from rgiant.data.transforms2 import get_transforms
 import shutil
 
 # Adjust this path if you want to point to a temp directory
@@ -33,12 +34,15 @@ def test_raw_dataset():
     assert N > 0, "Raw dataset is empty"
     for idx in [0, N//2, N-1]:
         g = raw_ds[idx]
-        for attr in ("x", "edge_index", "edge_weight", "edge_type", "id"):
+        for attr in ("x", "edge_index", "edge_attr", "id"):
             assert hasattr(g, attr), f"Graph missing `{attr}`"
         # If labels are present, they should be integers
         if hasattr(g, "y"):
             y = g.y.item()
             assert isinstance(y, (int, np.integer)), f"Label is not int: {y}"
+
+    print(raw_ds[0].edge_attr.shape)
+    print(raw_ds[0].edge_index)
 
     print("Raw dataset tests passed.")
 
@@ -54,7 +58,7 @@ def test_normalised_dataset():
 
     # 2) Build pre_transform from train split of raw_ds
     #    (here we simply use the entire raw_ds for stats)
-    pre_tf = get_zscore_transform(raw_ds)
+    pre_tf = get_transforms(raw_ds, diff_p_min=0.001, diff_p_max=0.02)
 
     # 3) Instantiate normalized dataset (writes processed/normalised_graphs.pt)
     norm_ds = ConnectomeDataset(
@@ -65,8 +69,8 @@ def test_normalised_dataset():
         force_reload=True
     )
 
-    print(raw_ds[0].x[31])
-    print(norm_ds[0].x[31])
+    print(raw_ds[50].x[31])
+    print(norm_ds[50].x[31])
 
     # Compute min and max per feature for the first raw graph (participant 0), ignoring zeros
     raw_x0 = raw_ds[0].x
@@ -106,8 +110,8 @@ def test_normalised_dataset():
     nonzero_mask = std_per_roi > 0
 
 
-    # assert torch.allclose(mean_per_roi, torch.zeros_like(mean_per_roi), atol=5e-1), f"Numeric feature means not near zero: {mean_per_roi[:5]}..."
-    # assert torch.allclose(std_per_roi[nonzero_mask], torch.ones_like(std_per_roi[nonzero_mask]), atol=5e-1), f"Numeric feature stds not near one: {std_per_roi[nonzero_mask][:5]}"
+    # assert torch.allclose(mean_per_roi, torch.zeros_like(mean_per_roi), atol=0.1), f"Numeric feature means not near zero: {mean_per_roi[:5]}..."
+    # assert torch.allclose(std_per_roi[nonzero_mask], torch.ones_like(std_per_roi[nonzero_mask]), atol=0.1), f"Numeric feature stds not near one: {std_per_roi[nonzero_mask][:5]}"
 
 
  
@@ -146,39 +150,48 @@ def test_normalised_dataset():
         plt.tight_layout(rect=[0, 0, 1, 0.96])
 
     # ------------------------------------------------------------------
-    #  Gather every edge-weight for every relation from the normalised dataset
+    #  Gather every edge-attribute across the *normalized* dataset
     # ------------------------------------------------------------------
-    weights_by_rel = defaultdict(list)        # rel-id -> list-of-1D-tensors
-    for g in norm_ds:
-        w, r = g.edge_weight, g.edge_type
-        for rel in r.unique().tolist():
-            weights_by_rel[int(rel)].append(w[r == rel])
+    # Assumes each graph `g` has g.edge_attr shape [E_g, M]
+    all_eattr = torch.cat([g.edge_attr for g in norm_ds], dim=0)  # [∑E_g, M]
+    M = all_eattr.size(1)
+
+    # Optionally split into lists per metric:
+    # metrics_by_idx = {m: all_eattr[:, m] for m in range(M)}
 
     # ------------------------------------------------------------------
-    #  Compute simple stats and print a table
+    #  Compute simple stats and print a table, one line per metric column
     # ------------------------------------------------------------------
-    print("\nEdge-weight stats AFTER per-relation z-score\n")
-    for rel in sorted(weights_by_rel):
-        w = torch.cat(weights_by_rel[rel])
-        print(f"rel {rel:2d}:  N={len(w):6d}   mean={w.mean():+7.4f}   std={w.std():6.4f}   "
-            f"[{w.min():+5.2f} {w.max():+5.2f}]")
+    print("\nEdge-attribute stats AFTER z-score:\n")
+    for m in range(M):
+        col = all_eattr[:, m]
+        print(f"metric {m:2d}: N={col.numel():6d}   "
+            f"mean={col.mean():+7.4f}   std={col.std():6.4f}   "
+            f"[{col.min():+5.2f} … {col.max():+5.2f}]")
 
     # ------------------------------------------------------------------
-    #  Make histograms – one subplot per relation (up to 6 per figure)
+    #  Make histograms – one subplot per metric (up to M per figure)
     # ------------------------------------------------------------------
-    rels      = sorted(weights_by_rel)
-    ncols     = 3
-    nrows     = int(np.ceil(len(rels)/ncols))
+    ncols = 3
+    nrows = int(np.ceil(M / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
 
-    for ax, rel in zip(axes.flatten(), rels):
-        data = torch.cat(weights_by_rel[rel]).numpy()
+    for m, ax in enumerate(axes.flatten()[:M]):
+        data = all_eattr[:, m].cpu().numpy()
+        # if m in [0,4,6]:
+        #     ax.set_xlim(0, 0.002)
+        #     # only keep values between 0 and 0.4
+        #     data = data[(data >= 0) & (data <= 0.002)]
+        #     ax.hist(data, bins=500)
         ax.hist(data, bins=50)
-        ax.set_title(f"Relation {rel}   mean={data.mean():+.2f} std={data.std():.2f}")
-        ax.set_xlabel("z-scored weight");  ax.set_ylabel("count")
+        ax.set_title(f"metric {m}   μ={data.mean():+.2f}  σ={data.std():.2f}")
+        ax.set_xlabel("z-scored value")
+        ax.set_ylabel("count")
 
-    # hide any unused subplots
-    for ax in axes.flatten()[len(rels):]:
+        
+
+    # hide unused subplots
+    for ax in axes.flatten()[M:]:
         ax.axis("off")
 
     plt.tight_layout()

@@ -18,7 +18,7 @@ class ZScoreFeaturesPerROI:
     def __call__(self, data: Data) -> Data:
         x = data.x  # [N, F]
         # Split into one-hot and numeric parts
-        one_hot = x[:, :self.one_hot_dims]  # preserve these
+        one_hot = x[:, :self.one_hot_dims]
         numeric = x[:, self.one_hot_dims:]
 
         # Extract corresponding stats
@@ -33,36 +33,16 @@ class ZScoreFeaturesPerROI:
         return data
 
 
-
-class ZScoreEdgeWeightsPerRelation:
-    """
-    Normalize edge weights per relation type: z-score using precomputed means/stds.
-    """
-    def __init__(self, means: torch.Tensor, stds: torch.Tensor):
-        # means, stds: shape [R]
-        self.means = means
-        self.stds = stds
-
-    def __call__(self, data: Data) -> Data:
-        w = data.edge_weight
-        r = data.edge_type
-        mean_r = self.means[r]
-        std_r = self.stds[r]
-        data.edge_weight = (w - mean_r) / (std_r + 1e-6)
-        return data
-
-
-
-class ClipEdgeWeights:
-    """Clamp all edge weights to [low, high] *in-place*."""
+class ClipEdgeAttrs:
+    """Clamp all edge attributes to [low, high] in-place"""
     def __init__(self, low: float = -5.0, high: float = 5.0):
-        self.low  = low
+        self.low = low
         self.high = high
 
-    def __call__(self, data):
-        data.edge_weight.clamp_(self.low, self.high)
+    def __call__(self, data: Data) -> Data:
+        if hasattr(data, 'edge_attr'):
+            data.edge_attr.clamp_(self.low, self.high)
         return data
-
 
 
 class Compose:
@@ -78,102 +58,155 @@ class Compose:
         return data
 
 
+# ------------------------------------------------------------------------
+# Node feature stats
+# ------------------------------------------------------------------------
 
 def compute_feature_stats_per_node(
     dataset: InMemoryDataset,
     one_hot_dims: int = 3,
+    p_winsor: float = 0.01
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Per-ROI, per-feature mean & std ignoring zeros in the numeric part.
+    Compute per-ROI, per-feature mean & std ignoring zeros in numeric dimensions,
+    with optional winsorisation of extremes.
 
     Returns
     -------
-    means : [N, F]
-    stds  : [N, F]   (clamped ≥1e-6; one-hot dims forced to (mean=0, std=1))
+    means: Tensor[N, F]
+    stds : Tensor[N, F] (clamped >=1e-6; one-hot dims set to (0,1))
     """
-    all_x = torch.stack([g.x for g in dataset], dim=0)   # [G, N, F]
-    N, F  = all_x.shape[1:]
+    all_x = torch.stack([g.x for g in dataset], dim=0)  # [G, N, F]
+    G, N, F = all_x.shape
 
-    # one-hot part -> mean=0, std=1 so they’ll stay 0/1 after transform
+    # initialize: one-hot dims => mean=0, std=1
     means = torch.zeros(N, F, dtype=all_x.dtype)
-    stds  = torch.ones (N, F, dtype=all_x.dtype)
+    stds = torch.ones(N, F, dtype=all_x.dtype)
 
-    numeric = all_x[:, :, one_hot_dims:]                 # [G, N, F-hot]
-    mask    = numeric != 0                               # present values
+    # numeric part
+    numeric = all_x[:, :, one_hot_dims:]  # [G, N, F-hot]
+    mask = numeric != 0                    # [G, N, F-hot]
+    _, _, D = numeric.shape
 
-    # sum & count per ROI/feature, ignoring zeros
-    sum_   = (numeric * mask).sum(dim=0)                    # [N, F-hot]
-    count  = mask.sum(dim=0).clamp(min=1e-6)                # avoid /0
-    mean_n = sum_ / count
+    # iterate per ROI and feature
+    for i in range(N):
+        for d in range(D):
+            col = numeric[:, i, d]
+            pres = mask[:, i, d]
+            vals = col[pres]
+            if vals.numel() == 0:
+                continue
+            # winsorise
+            lo = vals.quantile(p_winsor)
+            hi = vals.quantile(1.0 - p_winsor)
+            clipped = vals.clamp(lo, hi)
+            mean = clipped.mean()
+            std = clipped.std(unbiased=False).clamp(min=1e-6)
+            means[i, one_hot_dims + d] = mean
+            stds[i, one_hot_dims + d] = std
 
-    # variance
-    var = (((numeric - mean_n) * mask) ** 2).sum(dim=0) / count
-    std_n = var.sqrt().clamp(min=1e-6)
-
-    # insert back into full tensors
-    means[:, one_hot_dims:] = mean_n
-    stds [:, one_hot_dims:] = std_n
     return means, stds
 
 
+# ------------------------------------------------------------------------
+# Edge attribute stats
+# ------------------------------------------------------------------------
 
-def _winsorise(t: torch.Tensor, p=0.01):
-    lo, hi = t.quantile(p), t.quantile(1-p)
-    return t.clamp(lo, hi)
+def _winsorise(t: torch.Tensor, p: float = 0.05) -> torch.Tensor:
+    """
+    Clamp tensor `t` to the [p, 1-p] quantile range in-place.
+    """
+    lo = t.quantile(p)
+    hi = t.quantile(1.0 - p)
+    return t.clamp_(lo, hi)
 
 
-
-def compute_edge_stats_per_relation(
+def compute_edge_stats_per_metric(
     dataset: InMemoryDataset,
-    p_winsor: float = 0.05
+    p_winsor: float = 0.05,
+    ignore_zeros: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Per-relation mean / std, after winsorising the strongest `p_winsor` tails.
-
-    Parameters
-    ----------
-    dataset   : InMemoryDataset  - graphs with .edge_weight & .edge_type
-    p_winsor  : float            - fraction of each tail to clamp (default 1 %)
+    Compute mean & std per edge-attribute metric column,
+    optionally ignoring zeros and winsorising extremes.
 
     Returns
     -------
-    means : [R] tensor
-    stds  : [R] tensor   (std is clamped ≥ 1e-6 to avoid /0)
+    means: Tensor[M]
+    stds:  Tensor[M] (clamped >=1e-6)
     """
-    # 1) figure out how many relation IDs we have
-    max_rel = 0
-    for g in dataset:
-        max_rel = max(max_rel, int(g.edge_type.max()))
-    R = max_rel + 1
+    all_eattr = torch.cat([g.edge_attr for g in dataset], dim=0)  # [ΣE, M]
+    M = all_eattr.size(1)
 
-    # 2) gather edge weights per relation
-    buckets = [[] for _ in range(R)]
-    for g in dataset:
-        w, r = g.edge_weight, g.edge_type
-        for rel in r.unique().tolist():
-            buckets[rel].append(w[r == rel])
-
-    # 3) winsorise → concat → mean / std
     means, stds = [], []
-    for rel, chunks in enumerate(buckets):
-        vec = torch.cat(chunks, dim=0)
-        vec = _winsorise(vec, p=p_winsor)
-        means.append(vec.mean())
-        stds .append(vec.std(unbiased=False).clamp(min=1e-6))
+    for m in range(M):
+        col = all_eattr[:, m]
+        if ignore_zeros:
+            col = col[col != 0]
+        if col.numel() == 0:
+            means.append(torch.tensor(0.0, dtype=all_eattr.dtype))
+            stds.append(torch.tensor(1.0, dtype=all_eattr.dtype))
+            continue
+        col = _winsorise(col, p=p_winsor)
+        mu = col.mean()
+        sigma = col.std(unbiased=False).clamp(min=1e-6)
+        means.append(mu)
+        stds.append(sigma)
 
     return torch.stack(means), torch.stack(stds)
 
 
+class ZScoreEdgeAttr:
+    """
+    Z-score each column of data.edge_attr: (e - mean) / std
+    """
+    def __init__(self, means: torch.Tensor, stds: torch.Tensor):
+        # means, stds: shape [M]
+        self.means = means
+        self.stds = stds
 
-def get_zscore_transform(dataset: InMemoryDataset) -> Callable[[Data], Data]:
+    def __call__(self, data: Data) -> Data:
+        data.edge_attr = (data.edge_attr - self.means) / (self.stds + 1e-6)
+        return data
+    
+
+class Log1pEdgeAttr:
     """
-    Build a pre_transform that applies per-ROI node-feature z-score
-    and per-relation edge-weight z-score, using stats from raw_dataset.
+    Apply log-compression to selected edge-attribute columns:
+        e  ->  sign(e) * log1p(|e|)
+    Pass `cols=None` to log-transform all columns.
     """
-    means_x, stds_x = compute_feature_stats_per_node(dataset)
-    means_w, stds_w = compute_edge_stats_per_relation(dataset)
+    def __init__(self, cols: List[int] = [0,1,4,5,6]):
+        self.cols = cols            # e.g. [1, 5]
+
+    def __call__(self, data: Data) -> Data:
+        ea = data.edge_attr
+        idx = range(ea.size(1)) if self.cols is None else self.cols
+        print(f"edge idxs {idx}")
+        ea[:, idx] = torch.log1p(ea[:, idx].abs()) * ea[:, idx].sign()
+        return data
+
+
+def get_zscore_transform(
+    dataset: InMemoryDataset,
+    one_hot_dims: int = 3,
+    p_node: float = 0.01,
+    p_edge: float = 0.05,
+    clip_bound: float = 5.0
+) -> Callable[[Data], Data]:
+    """
+    Build a composite pre_transform that:
+      1) Z-scores node features per ROI (ignoring one-hot dims)
+      2) Z-scores edge-attribute metrics per column
+      3) Optionally clamps edge weights to ±clip_bound
+    """
+    means_x, stds_x = compute_feature_stats_per_node(
+        dataset, one_hot_dims=one_hot_dims, p_winsor=p_node)
+    means_e, stds_e = compute_edge_stats_per_metric(
+        dataset, p_winsor=p_edge)
+
     return Compose([
-        ZScoreFeaturesPerROI(means_x, stds_x),
-        ZScoreEdgeWeightsPerRelation(means_w, stds_w),
-        ClipEdgeWeights(low=-4.0, high=4.0)
+        ZScoreFeaturesPerROI(means_x, stds_x, one_hot_dims),
+        ZScoreEdgeAttr(means_e, stds_e),
+        ClipEdgeAttrs(-clip_bound, clip_bound)
     ])
