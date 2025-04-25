@@ -1,212 +1,261 @@
-# data/transforms.py
+import numpy as np
+from numpy.typing import NDArray
 import torch
-from torch_geometric.data import Data, InMemoryDataset
-from typing import Callable, Tuple, List
+from torch_geometric.data import InMemoryDataset, Data
+from torch_geometric.transforms import Compose, BaseTransform
+
+#TODO: Create normalisation pipelines for streamline count metrics (1log, possibly clip, z-score) and the FA and length metrics (just z-score and possibly clip)
+#TODO: Implement the node feature normalisation like earlier but maybe with clipping if necessary. Not going to investigate all 98 different ROIs for outliers.
+
+def get_transforms(
+        dataset: InMemoryDataset,
+        diff_cols: list[int] = [0,4,6],
+        diff_p_min: float = 0.001,
+        diff_p_max: float = 0.02,
+        fl_cols: list[int] = [2,3],
+        count_cols: list[int] = [1],
+        count_scaling: int = 1e7,
+        rel_count_cols: list[int] = [5],
+        rel_count_scaling: int = 1e8,
+        one_hot_dims: int = 3
+        
+):
+    # -------------------Normalising the edge attributes----------------------------
+    # Initialise containers ready for saving the computed zscoring metrics
+    num_features = len(diff_cols) + len(fl_cols) + len(count_cols) + len(rel_count_cols)
+    print(num_features)
+
+    # Prepare empty containers for mean/std/quantiles across all features
+    edge_means = np.zeros(num_features, dtype=np.float32)
+    edge_stds = np.ones(num_features, dtype=np.float32)
+    qs_low = np.zeros(num_features, dtype=np.float32)
+    qs_high = np.zeros(num_features, dtype=np.float32)
+
+    # Compute stats for FA and streamline length (no clipping)
+    fl_means, fl_stds, _, _ = compute_edge_stats(dataset, cols=fl_cols)
+    edge_means[fl_cols] = fl_means
+    edge_stds[fl_cols] = fl_stds
+
+    # Compute stats for diffusivity metrics (with clipping)
+    diff_means, diff_stds, diff_qs_low, diff_qs_high = compute_edge_stats(
+        dataset, cols=diff_cols, p_min=diff_p_min, p_max=diff_p_max
+    )
+    edge_means[diff_cols] = diff_means
+    edge_stds[diff_cols] = diff_stds
+    qs_low[diff_cols] = diff_qs_low
+    qs_high[diff_cols] = diff_qs_high
+
+    # First we log transform the streamline counts
+    log_count_dataset = get_log_transformed_dataset(
+        dataset=dataset, cols=count_cols, scale=count_scaling
+        )
+    # Compute stats for log-transformed streamline counts (no clipping)
+    count_means, count_stds, _, _ = compute_edge_stats(
+        log_count_dataset, cols=count_cols
+        )
+    edge_means[count_cols] = count_means
+    edge_stds[count_cols] = count_stds
+
+    # We do this for different columns because we need to scale the values before we can log transform them
+    log_count_dataset = get_log_transformed_dataset(
+        dataset=dataset, cols=rel_count_cols, scale=rel_count_scaling
+        )   
+    # Compute stats for log-transformed normalised streamline counts (with clipping)
+    norm_count_means, norm_count_stds, _, _ = compute_edge_stats(
+        log_count_dataset, cols=rel_count_cols
+        )
+    edge_means[rel_count_cols] = norm_count_means
+    edge_stds[rel_count_cols] = norm_count_stds
+
+    # -----------------------Normalising the node features------------------------
+    # Compute the stats necessary for initialising the node feature normalisation class
+    node_means, node_stds = compute_node_stats(dataset=dataset)
 
 
-class ZScoreFeaturesPerROI:
+    # Final Compose pipeline
+    transforms = Compose([
+        LogEdgeAttributes(
+            cols=count_cols,
+            scale=count_scaling
+            ),
+        LogEdgeAttributes(
+            cols=rel_count_cols,
+            scale=rel_count_scaling
+        ),
+        ZscoreClipEdgeAttributes(
+            means=edge_means,
+            stds=edge_stds,
+            qs_low=qs_low,
+            qs_high=qs_high,
+        ),
+        ZScoreFeaturesPerROI(
+            means=node_means,
+            stds=node_stds
+        )
+    ])
+
+    return transforms
+
+
+
+def compute_edge_stats(
+    dataset: InMemoryDataset,
+    cols: list[int],
+    p_min: float = 0.0,
+    p_max: float = 0.0,
+):
     """
-    Normalize node features per ROI index: z-score only numeric features, leave one-hot dims unchanged.
-    Assumes first `one_hot_dims` columns of data.x are one-hot indicators and should not be normalized.
+    Compute robust normalization statistics for selected edge attributes.
+
+    This function iterates over all graphs in the given PyG InMemoryDataset,
+    extracts the specified columns from each `edge_attr`, applies percentile-based
+    clipping (Winsorization) according to `p_min` and `p_max`, and then computes
+    the mean and standard deviation of the clipped values.
+
+    Parameters
+    ----------
+    dataset : InMemoryDataset
+        A PyG InMemoryDataset containing `Data` objects with an `edge_attr` field.
+    cols : list[int]
+        Indices of the edge attribute columns to process.
+    p_min : float, default=0.0
+        Lower-tail clipping quantile (0 ≤ p_min < 1). Values below this quantile
+        are set to the `p_min` threshold.
+    p_max : float, default=0.0
+        Upper-tail clipping quantile (0 ≤ p_max < 1). Values above the
+        `1 - p_max` quantile are set to the corresponding threshold.
+
+    Returns
+    -------
+    means : np.ndarray, shape (len(cols),)
+        The mean of each selected column after clipping.
+    stds : np.ndarray, shape (len(cols),)
+        The standard deviation (population, ddof=0) of each clipped column.
+    qs_low : np.ndarray, shape (len(cols),)
+        The lower quantile thresholds used for clipping (p_min).
+    qs_high : np.ndarray, shape (len(cols),)
+        The upper quantile thresholds used for clipping (1 - p_max).
     """
-    def __init__(self, means: torch.Tensor, stds: torch.Tensor, one_hot_dims: int = 3):
-        # means, stds: shape [N, F]
-        self.means = means
-        self.stds = stds
+        
+    # concat each individual graph's edge attributes [E{i},7] and concat into [E_total,7]
+    edge_attrs = np.concatenate([data.edge_attr.numpy() for data in dataset], axis=0)   # [E_total,7]
+
+    # Get only the edges we care about from the specified columns 
+    diff_attrs = edge_attrs[:, cols]    # [E_total, len(cols)]
+
+    # Compute the qunatiles that fall outside the p percentile threshold
+    qs_low = np.quantile(diff_attrs, p_min, axis=0)     # (len(cols),)
+    qs_high = np.quantile(diff_attrs, 1-p_max, axis=0)  # (len(cols),)
+
+    # Clip the diffusivity attributes such that the tails are compressed to fall within the calculates quantiles
+    clipped_attrs = np.clip(a=diff_attrs, a_min=qs_low, a_max=qs_high)  # [E_total, len(cols)]
+
+    # Compute the means and stds for each diffusivity metric
+    means = clipped_attrs.mean(axis=0)  # (len(cols),)
+    stds = clipped_attrs.std(axis=0, ddof=0)    # (len(cols),)
+
+    return means, stds, qs_low, qs_high
+
+
+
+class ZscoreClipEdgeAttributes(BaseTransform):
+    def __init__(self,
+                 means: NDArray[np.float32],
+                 stds: NDArray[np.float32],
+                 qs_low: NDArray[np.float32] = np.zeros(7,),
+                 qs_high: NDArray[np.float32] = np.zeros(7,)
+                 ):
+        super().__init__()
+
+        self.means = torch.tensor(means).view(1, -1).float()
+        self.stds = torch.tensor(stds).view(1, -1).float().clamp(min=1e-12)
+
+        self.qs_low = torch.tensor(qs_low).view(1, -1).float()
+        self.qs_high = torch.tensor(qs_high).view(1, -1).float()
+
+        # clipping mask for columns that have actual values to clip and not just 0s
+        self.clip_mask = (self.qs_high != self.qs_low)
+
+    def __call__(self, data: Data):
+        # get data
+        edge_attr = data.edge_attr
+
+        # Winsorise clip such that tails get compressed into the p percentile limit calculated earlier
+        if self.clip_mask.any():
+            edge_attr[:, self.clip_mask[0]] = torch.maximum(
+                edge_attr[:, self.clip_mask[0]],
+                self.qs_low[:, self.clip_mask[0]]
+            )
+            edge_attr[:, self.clip_mask[0]] = torch.minimum(
+                edge_attr[:, self.clip_mask[0]],
+                self.qs_high[:, self.clip_mask[0]]
+            )
+
+        # Compute the Z-score for the diffusivity metrics
+        edge_attr = (edge_attr - self.means) / self.stds
+
+        # write everything back into the graph data
+        data.edge_attr = edge_attr
+
+        return data
+
+        
+        
+def get_log_transformed_dataset(dataset: InMemoryDataset, cols: list[int], scale: float = 1.0):
+    log_dataset = []
+    for data in dataset:
+        data = data.clone()
+        data.edge_attr[:, cols] = torch.log1p(data.edge_attr[:, cols] * scale)  # actual log transform
+        log_dataset.append(data)
+    return log_dataset
+
+
+
+class LogEdgeAttributes(BaseTransform):
+    def __init__(self, cols: list[int], scale: float = 1.0):
+        super().__init__()
+        self.cols = cols
+        self.scale = scale
+    
+    def __call__(self, data):
+        data.edge_attr[:, self.cols] = torch.log1p(data.edge_attr[:, self.cols] * self.scale)
+        return data
+
+
+
+def compute_node_stats(
+        dataset: InMemoryDataset,
+        one_hot_dims: int = 3
+):
+    x_list = []
+    for data in dataset:    # for each graph
+        x_num = data.x[:, one_hot_dims:].numpy()    # (N, F_num) Only take the numerical node features, not the one-hot features
+        x_num = np.where(x_num == 0.0, np.nan, x_num)   # Replace exact 0 values with NaN so we can ignore them when taking mean and std
+        x_list.append(x_num)    # Save to list
+
+    x_stacked = np.stack(x_list, axis=0)    # (G, N, F_num)
+
+    means = np.nanmean(x_stacked, axis=0)   # (N, F_num)
+    stds = np.nanstd(x_stacked, axis=0)     # (N, F_num)
+
+    # Replace nans with neutral values
+    means = np.nan_to_num(means, nan=0.0)
+    stds = np.nan_to_num(stds, nan=1.0)
+    
+    return means, stds
+
+
+
+class ZScoreFeaturesPerROI(BaseTransform):
+    def __init__(self, means: np.ndarray, stds: np.ndarray, one_hot_dims: int = 3):
+        super().__init__()
+        self.means = torch.tensor(means).float()    # [N, F_num]
+        self.stds  = torch.tensor(stds).float().clamp(min=1e-12)    # [N, F_num]
         self.one_hot_dims = one_hot_dims
 
     def __call__(self, data: Data) -> Data:
         x = data.x  # [N, F]
-        # Split into one-hot and numeric parts
-        one_hot = x[:, :self.one_hot_dims]
-        numeric = x[:, self.one_hot_dims:]
-
-        # Extract corresponding stats
-        mean_num = self.means[:, self.one_hot_dims:]
-        std_num = self.stds[:, self.one_hot_dims:]
-
-        # Z-score numeric features
-        numeric_z = (numeric - mean_num) / (std_num + 1e-6)
-
-        # Reassemble features: one-hot unchanged, numeric replaced
-        data.x = torch.cat([one_hot, numeric_z], dim=1)
+        x_num = x[:, self.one_hot_dims:]    # [N, F_num]
+        x[:, self.one_hot_dims:] = (x_num - self.means) / self.stds
         return data
 
-
-class ClipEdgeAttrs:
-    """Clamp all edge attributes to [low, high] in-place"""
-    def __init__(self, low: float = -5.0, high: float = 5.0):
-        self.low = low
-        self.high = high
-
-    def __call__(self, data: Data) -> Data:
-        if hasattr(data, 'edge_attr'):
-            data.edge_attr.clamp_(self.low, self.high)
-        return data
-
-
-class Compose:
-    """
-    Compose multiple Data transforms into one callable.
-    """
-    def __init__(self, transforms: List[Callable[[Data], Data]]):
-        self.transforms = transforms
-
-    def __call__(self, data: Data) -> Data:
-        for t in self.transforms:
-            data = t(data)
-        return data
-
-
-# ------------------------------------------------------------------------
-# Node feature stats
-# ------------------------------------------------------------------------
-
-def compute_feature_stats_per_node(
-    dataset: InMemoryDataset,
-    one_hot_dims: int = 3,
-    p_winsor: float = 0.01
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute per-ROI, per-feature mean & std ignoring zeros in numeric dimensions,
-    with optional winsorisation of extremes.
-
-    Returns
-    -------
-    means: Tensor[N, F]
-    stds : Tensor[N, F] (clamped >=1e-6; one-hot dims set to (0,1))
-    """
-    all_x = torch.stack([g.x for g in dataset], dim=0)  # [G, N, F]
-    G, N, F = all_x.shape
-
-    # initialize: one-hot dims => mean=0, std=1
-    means = torch.zeros(N, F, dtype=all_x.dtype)
-    stds = torch.ones(N, F, dtype=all_x.dtype)
-
-    # numeric part
-    numeric = all_x[:, :, one_hot_dims:]  # [G, N, F-hot]
-    mask = numeric != 0                    # [G, N, F-hot]
-    _, _, D = numeric.shape
-
-    # iterate per ROI and feature
-    for i in range(N):
-        for d in range(D):
-            col = numeric[:, i, d]
-            pres = mask[:, i, d]
-            vals = col[pres]
-            if vals.numel() == 0:
-                continue
-            # winsorise
-            lo = vals.quantile(p_winsor)
-            hi = vals.quantile(1.0 - p_winsor)
-            clipped = vals.clamp(lo, hi)
-            mean = clipped.mean()
-            std = clipped.std(unbiased=False).clamp(min=1e-6)
-            means[i, one_hot_dims + d] = mean
-            stds[i, one_hot_dims + d] = std
-
-    return means, stds
-
-
-# ------------------------------------------------------------------------
-# Edge attribute stats
-# ------------------------------------------------------------------------
-
-def _winsorise(t: torch.Tensor, p: float = 0.05) -> torch.Tensor:
-    """
-    Clamp tensor `t` to the [p, 1-p] quantile range in-place.
-    """
-    lo = t.quantile(p)
-    hi = t.quantile(1.0 - p)
-    return t.clamp_(lo, hi)
-
-
-def compute_edge_stats_per_metric(
-    dataset: InMemoryDataset,
-    p_winsor: float = 0.05,
-    ignore_zeros: bool = True
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute mean & std per edge-attribute metric column,
-    optionally ignoring zeros and winsorising extremes.
-
-    Returns
-    -------
-    means: Tensor[M]
-    stds:  Tensor[M] (clamped >=1e-6)
-    """
-    all_eattr = torch.cat([g.edge_attr for g in dataset], dim=0)  # [ΣE, M]
-    M = all_eattr.size(1)
-
-    means, stds = [], []
-    for m in range(M):
-        col = all_eattr[:, m]
-        if ignore_zeros:
-            col = col[col != 0]
-        if col.numel() == 0:
-            means.append(torch.tensor(0.0, dtype=all_eattr.dtype))
-            stds.append(torch.tensor(1.0, dtype=all_eattr.dtype))
-            continue
-        col = _winsorise(col, p=p_winsor)
-        mu = col.mean()
-        sigma = col.std(unbiased=False).clamp(min=1e-6)
-        means.append(mu)
-        stds.append(sigma)
-
-    return torch.stack(means), torch.stack(stds)
-
-
-class ZScoreEdgeAttr:
-    """
-    Z-score each column of data.edge_attr: (e - mean) / std
-    """
-    def __init__(self, means: torch.Tensor, stds: torch.Tensor):
-        # means, stds: shape [M]
-        self.means = means
-        self.stds = stds
-
-    def __call__(self, data: Data) -> Data:
-        data.edge_attr = (data.edge_attr - self.means) / (self.stds + 1e-6)
-        return data
-    
-
-class Log1pEdgeAttr:
-    """
-    Apply log-compression to selected edge-attribute columns:
-        e  ->  sign(e) * log1p(|e|)
-    Pass `cols=None` to log-transform all columns.
-    """
-    def __init__(self, cols: List[int] = [0,1,4,5,6]):
-        self.cols = cols            # e.g. [1, 5]
-
-    def __call__(self, data: Data) -> Data:
-        ea = data.edge_attr
-        idx = range(ea.size(1)) if self.cols is None else self.cols
-        print(f"edge idxs {idx}")
-        ea[:, idx] = torch.log1p(ea[:, idx].abs()) * ea[:, idx].sign()
-        return data
-
-
-def get_zscore_transform(
-    dataset: InMemoryDataset,
-    one_hot_dims: int = 3,
-    p_node: float = 0.01,
-    p_edge: float = 0.05,
-    clip_bound: float = 5.0
-) -> Callable[[Data], Data]:
-    """
-    Build a composite pre_transform that:
-      1) Z-scores node features per ROI (ignoring one-hot dims)
-      2) Z-scores edge-attribute metrics per column
-      3) Optionally clamps edge weights to ±clip_bound
-    """
-    means_x, stds_x = compute_feature_stats_per_node(
-        dataset, one_hot_dims=one_hot_dims, p_winsor=p_node)
-    means_e, stds_e = compute_edge_stats_per_metric(
-        dataset, p_winsor=p_edge)
-
-    return Compose([
-        ZScoreFeaturesPerROI(means_x, stds_x, one_hot_dims),
-        ZScoreEdgeAttr(means_e, stds_e),
-        ClipEdgeAttrs(-clip_bound, clip_bound)
-    ])
