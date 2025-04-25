@@ -117,51 +117,43 @@ def test_normalised_dataset():
  
     # 3) Gather the chosen feature value across all graphs for the specified ROI
     # Features to plot
-    feature_indices = {
-        3: "Volumemm3",
-        4: "SurfArea",
-        5: "GrayVol",
-        6: "ThickAvg",
-        7: "ThickStd",
-        8: "MeanCurv",
-        9: "PIB-SUVR"
-    }
+    # feature_indices = {
+    #     3: "Volumemm3",
+    #     4: "SurfArea",
+    #     5: "GrayVol",
+    #     6: "ThickAvg",
+    #     7: "ThickStd",
+    #     8: "MeanCurv",
+    #     9: "PIB-SUVR"
+    # }
 
-    for roi_idx in [10, 40, 70, 80]:
-        # 6) Collect values for this ROI index
-        values_by_feature = {f: [] for f in feature_indices}
-        for g in norm_ds:
-            x = g.x.numpy()
-            for f in feature_indices:
-                vals = x[roi_idx, f]
-                nonzero_vals = vals[vals != 0] if hasattr(vals, "__iter__") else ([vals] if vals != 0 else [])
-                values_by_feature[f].extend(nonzero_vals)
+    # for roi_idx in [10, 40, 70, 80]:
+    #     # 6) Collect values for this ROI index
+    #     values_by_feature = {f: [] for f in feature_indices}
+    #     for g in norm_ds:
+    #         x = g.x.numpy()
+    #         for f in feature_indices:
+    #             vals = x[roi_idx, f]
+    #             nonzero_vals = vals[vals != 0] if hasattr(vals, "__iter__") else ([vals] if vals != 0 else [])
+    #             values_by_feature[f].extend(nonzero_vals)
 
-        # Plot grid for this ROI
-        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-        fig.suptitle(f"ROI index: {roi_idx}", fontsize=16)
-        axes = axes.flatten()
-        for ax, (f, label) in zip(axes, feature_indices.items()):
-            ax.hist(values_by_feature[f], bins=16)
-            ax.set_title(f"{label} (feat {f})")
-            ax.set_xlabel("Z-scored value")
-            ax.set_ylabel("Count")
+    #     # Plot grid for this ROI
+    #     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    #     fig.suptitle(f"ROI index: {roi_idx}", fontsize=16)
+    #     axes = axes.flatten()
+    #     for ax, (f, label) in zip(axes, feature_indices.items()):
+    #         ax.hist(values_by_feature[f], bins=16)
+    #         ax.set_title(f"{label} (feat {f})")
+    #         ax.set_xlabel("Z-scored value")
+    #         ax.set_ylabel("Count")
 
-        plt.tight_layout(rect=[0, 0, 1, 0.96])
+    #     plt.tight_layout(rect=[0, 0, 1, 0.96])
 
-    # ------------------------------------------------------------------
-    #  Gather every edge-attribute across the *normalized* dataset
-    # ------------------------------------------------------------------
+
     # Assumes each graph `g` has g.edge_attr shape [E_g, M]
-    all_eattr = torch.cat([g.edge_attr for g in norm_ds], dim=0)  # [∑E_g, M]
+    all_eattr = torch.cat([g.edge_attr for g in raw_ds], dim=0)  # [∑E_g, M]
     M = all_eattr.size(1)
 
-    # Optionally split into lists per metric:
-    # metrics_by_idx = {m: all_eattr[:, m] for m in range(M)}
-
-    # ------------------------------------------------------------------
-    #  Compute simple stats and print a table, one line per metric column
-    # ------------------------------------------------------------------
     print("\nEdge-attribute stats AFTER z-score:\n")
     for m in range(M):
         col = all_eattr[:, m]
@@ -169,26 +161,60 @@ def test_normalised_dataset():
             f"mean={col.mean():+7.4f}   std={col.std():6.4f}   "
             f"[{col.min():+5.2f} … {col.max():+5.2f}]")
 
-    # ------------------------------------------------------------------
-    #  Make histograms – one subplot per metric (up to M per figure)
-    # ------------------------------------------------------------------
     ncols = 3
     nrows = int(np.ceil(M / ncols))
     fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
 
     for m, ax in enumerate(axes.flatten()[:M]):
         data = all_eattr[:, m].cpu().numpy()
-        # if m in [0,4,6]:
-        #     ax.set_xlim(0, 0.002)
-        #     # only keep values between 0 and 0.4
-        #     data = data[(data >= 0) & (data <= 0.002)]
-        #     ax.hist(data, bins=500)
+        if m in [0,4,6]:
+            ax.set_xlim(0, 0.002)
+            # only keep values between 0 and 0.4
+            data = data[(data >= 0) & (data <= 0.002)]
+            ax.hist(data, bins=500)
+        if m == 1:
+            ax.set_xlim(0, 50)
+            data = data[(data >=0) & (data <= 50)]
+            ax.hist(data, bins=50)
+        if m == 5:
+            ax.set_xlim(0, 0.0002)
+            data = data[(data >= 0) & (data <= 0.0002)]
+            ax.hist(data, bins=50)
+
+        ax.hist(data, bins=50)
+        ax.set_title(f"metric {m}   μ={data.mean():+.2f}  σ={data.std():.2f}")
+        ax.set_xlabel("raw value")
+        ax.set_ylabel("count")
+
+        
+
+    # hide unused subplots
+    for ax in axes.flatten()[M:]:
+        ax.axis("off")
+
+    plt.tight_layout()
+
+    # Assumes each graph `g` has g.edge_attr shape [E_g, M]
+    all_eattr = torch.cat([g.edge_attr for g in norm_ds], dim=0)  # [∑E_g, M]
+    M = all_eattr.size(1)
+
+    print("\nEdge-attribute stats AFTER z-score:\n")
+    for m in range(M):
+        col = all_eattr[:, m]
+        print(f"metric {m:2d}: N={col.numel():6d}   "
+            f"mean={col.mean():+7.4f}   std={col.std():6.4f}   "
+            f"[{col.min():+5.2f} … {col.max():+5.2f}]")
+
+    ncols = 3
+    nrows = int(np.ceil(M / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), squeeze=False)
+
+    for m, ax in enumerate(axes.flatten()[:M]):
+        data = all_eattr[:, m].cpu().numpy()
         ax.hist(data, bins=50)
         ax.set_title(f"metric {m}   μ={data.mean():+.2f}  σ={data.std():.2f}")
         ax.set_xlabel("z-scored value")
         ax.set_ylabel("count")
-
-        
 
     # hide unused subplots
     for ax in axes.flatten()[M:]:
