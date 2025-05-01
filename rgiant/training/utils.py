@@ -145,8 +145,8 @@ def set_seed(seed: int = 42):
     torch.manual_seed(seed)
     # 4) PyTorch (all GPUs)
     torch.cuda.manual_seed_all(seed)
-    # 5) CuDNN deterministic settings
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # # 5) CuDNN deterministic settings
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
     # 6) Python hash seed
     os.environ['PYTHONHASHSEED'] = str(seed)

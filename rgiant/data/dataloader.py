@@ -3,9 +3,8 @@ import numpy as np
 import torch
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.loader import DataLoader
-from torch.utils.data import Subset
+from torch.utils.data import Subset, WeightedRandomSampler
 from sklearn.model_selection import train_test_split, StratifiedKFold
-from sklearn.utils.class_weight import compute_class_weight
 
 # Import your graph dataset class and normalization transforms
 from rgiant.data.dataset import ConnectomeDataset
@@ -17,10 +16,27 @@ def compute_weights(labels: np.ndarray) -> torch.Tensor:
     """
     Compute class weights for imbalanced classification.
     """
-    classes = np.unique(labels)
-    print(f"classes: {classes}")
-    weights = compute_class_weight('balanced', classes=classes, y=labels)
-    return torch.tensor(weights, dtype=torch.float)
+    counts = np.bincount(labels)    # [num_HC, num_MCI, num_AD]
+
+    N = labels.shape[0]     # total number of training examples
+    C = len(counts)         # total number of distinct classes
+
+    class_weights = N / (C * counts)    # [num_classes]
+    return torch.tensor(class_weights, dtype=torch.float)
+
+
+
+def get_sampler(class_weights: torch.Tensor, labels: np.ndarray, power: float = 1.0):
+
+    soft_weights = class_weights.pow(power)   # [num_classes]
+
+    sample_weights = soft_weights[torch.as_tensor(labels, dtype=torch.long)]   # [N]
+
+    return WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True
+    )
 
 
 
@@ -32,8 +48,10 @@ def make_split_loaders(
     random_state: int = 19,
     num_workers: int = 0,
     pin_memory: bool = True,
-    persistent_workers: bool = True,
-    prefetch_factor: int = None
+    persistent_workers: bool = False,
+    prefetch_factor: int = None,
+    use_sampler: bool = False,
+    sampler_power: float = 1.0
 ):
     """
     Create train/val/test DataLoaders with a pre_transform based on train-set stats.
@@ -82,7 +100,17 @@ def make_split_loaders(
     val_ds   = Subset(normalised_dataset, idx_val)
     test_ds  = Subset(normalised_dataset, idx_test)
 
-    # 6) Build DataLoaders
+    # 6) Compute per-sample weights for the training set
+    class_weights = compute_weights(y_train)    # These are necessary for us to alter the loss function to manage the class inbalance
+
+    if use_sampler: # Force the dataloader to oversample minority classes when we use a sampler
+        sampler = get_sampler(class_weights=class_weights, labels=y_train, power=sampler_power)
+        shuffle = False
+    else:   # Otherwise just shuffle data (we can use class_weights to alter loss_fn later)
+        sampler = None
+        shuffle = True
+
+    # 7) Build DataLoaders
     dl_kwargs = dict(
         batch_size=batch_size,
         num_workers=num_workers,
@@ -90,12 +118,14 @@ def make_split_loaders(
         persistent_workers=persistent_workers,
         prefetch_factor=prefetch_factor
     )
-    train_loader = DataLoader(train_ds, shuffle=True, batch_size=batch_size)  # We only shuffle the train_loader so that training is more random
-    val_loader   = DataLoader(val_ds, shuffle=False, batch_size=batch_size)
-    test_loader  = DataLoader(test_ds, shuffle=False, batch_size=batch_size)
 
-    # 7) Compute class weights on train labels
-    class_weights = compute_weights(y_train)    # These are necessary for us to alter the loss function to manage the class inbalance
+    if sampler is not None:
+        train_loader = DataLoader(train_ds, sampler=sampler, **dl_kwargs)
+    else:
+        train_loader = DataLoader(train_ds, shuffle=shuffle, **dl_kwargs)
+
+    val_loader  = DataLoader(val_ds,   shuffle=False, **dl_kwargs)
+    test_loader = DataLoader(test_ds,  shuffle=False, **dl_kwargs)
 
     return {
         'train_loader': train_loader,

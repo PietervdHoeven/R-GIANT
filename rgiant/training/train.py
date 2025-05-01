@@ -2,12 +2,12 @@
 import os
 import argparse
 import torch
-import random
 import numpy as np
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 from torch.optim import Adam
 from sklearn.metrics import precision_score, recall_score, f1_score
-from tqdm import tqdm
+from tqdm import trange
+from sklearn.metrics import classification_report
 
 # Own packages
 from rgiant.data.dataloader import make_split_loaders
@@ -39,12 +39,14 @@ def get_args():
     p.add_argument('--model',           choices=MODEL_FACTORY, required=True)
     p.add_argument('--data-root',       type=str,  required=True)
     p.add_argument('--batch-size',      type=int,  default=16)
-    p.add_argument('--num-classes',     type=int,  default=2)
+    p.add_argument('--use-sampler',     action='store_true')
+    p.add_argument('--use-wloss',       action='store_true')
     # Training hyperparams  
     p.add_argument('--epochs',          type=int,  default=100)
     p.add_argument('--lr',              type=float,default=1e-4)
     p.add_argument('--loss',            choices=LOSS_FACTORY, default='ce')
     p.add_argument('--patience',        type=int,  default=10)
+    p.add_argument('--sampler-power',   type=float,default=1.0)
     # Misc  
     p.add_argument('--seed',            type=int,  default=19)
     p.add_argument('--device',          type=str,  default='cuda')
@@ -108,7 +110,7 @@ def eval_step(model, loader, loss_fn, device):
     recall      = recall_score(all_labels, all_preds, average='macro', zero_division=0)
     f1          = f1_score(all_labels, all_preds, average='macro', zero_division=0)
 
-    return (avg_loss, accuracy, precision, recall, f1)
+    return avg_loss, accuracy, precision, recall, f1, all_labels, all_preds
 
 # ──────────────────────────────────────────────────────────────
 # Main orchestration
@@ -123,7 +125,9 @@ def main():
     # 2) Data loaders
     loaders = make_split_loaders(
         dataset_root=args.data_root,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        use_sampler=args.use_sampler,
+        sampler_power=args.sampler_power
     )
     train_loader    = loaders['train_loader']
     val_loader      = loaders['val_loader']
@@ -134,17 +138,23 @@ def main():
     ModelClass = MODEL_FACTORY[args.model]
     model = ModelClass(
         in_node_feats=train_loader.dataset[0].num_node_features,
-        num_classes=args.num_classes
+        num_classes=len(class_weights)
     ).to(device)
 
     # 4) Loss + optimizer
     LossClass = LOSS_FACTORY[args.loss]
     if args.loss == 'ce':
-        loss_fn = LossClass(weight=class_weights)
+        if args.use_sampler or not args.use_wloss:
+            loss_fn = LossClass()
+        else:
+            loss_fn = LossClass(weight=class_weights)
     else:
-        # assume BCEWithLogitsLoss; pos_weight = w_pos/w_neg
-        pos_weight = class_weights[1]/class_weights[0]
-        loss_fn = LossClass(pos_weight=pos_weight)
+        if args.use_sampler or not args.use_wloss:
+            loss_fn = LossClass()
+        else:
+            # assume BCEWithLogitsLoss; pos_weight = w_pos/w_neg
+            pos_weight = class_weights[1]/class_weights[0]
+            loss_fn = LossClass(pos_weight=pos_weight)
     optimizer = Adam(model.parameters(), lr=args.lr)
 
     # 5) Early stopping & plotting
@@ -154,33 +164,76 @@ def main():
         'val_precision','val_recall','val_f1'
     ])
 
-    # 6) Training loop
-    for epoch in tqdm(range(1, args.epochs+1)):
-        tr_loss, tr_acc = train_step(model, train_loader, optimizer, loss_fn, device)
-        va_loss, va_acc, va_prec, va_rec, va_f1 = eval_step(model, val_loader, loss_fn, device)
 
-        print(f"Epoch {epoch}/{args.epochs} "
-              f"- Train: L {tr_loss:.4f}, A {tr_acc:.4f} "
-              f"- Val: L {va_loss:.4f}, A {va_acc:.4f}, P {va_prec:.4f}, R {va_rec:.4f}, F1 {va_f1:.4f}")
+    # 6) Training loop
+    # Wrap epoch loop to handle verbose OR tqdm process bar
+    if args.verbose:
+        epoch_iterator = range(1, args.epochs + 1)
+    else:
+        # trange is just `tqdm(range(...))`
+        epoch_iterator = trange(1, args.epochs + 1, desc="Epochs")
+    
+    # Loop over all epochs
+    for epoch in epoch_iterator:
+        train_loss, train_acc = train_step(model, train_loader, optimizer, loss_fn, device)
+        val_loss, val_acc, val_prec, val_rec, val_f1, val_y, val_y_pred = eval_step(model, val_loader, loss_fn, device)
+
+        if args.verbose:
+            # print(f"Epoch {epoch}/{args.epochs} "
+            #     f"- Train: L {train_loss:.4f}, A {train_acc:.4f} "
+            #     f"- Val: L {val_loss:.4f}, A {val_acc:.4f}, P {val_prec:.4f}, R {val_rec:.4f}, F1 {val_f1:.4f}")
+            
+            print(f"\nEpoch {epoch}/{args.epochs} validation classification report:")
+            print(classification_report(
+                val_y, val_y_pred,
+                target_names=['HC','MCI & AD'],
+                digits=3,
+                zero_division=0
+                ))
 
         plotter.log(
-            train_loss=tr_loss, train_acc=tr_acc,
-            val_loss=va_loss,   val_acc=va_acc,
-            val_precision=va_prec, val_recall=va_rec, val_f1=va_f1
+            train_loss=train_loss, train_acc=train_acc,
+            val_loss=val_loss,   val_acc=val_acc,
+            val_precision=val_prec, val_recall=val_rec, val_f1=val_f1
         )
 
-        early_stopper(va_f1, model)
+        early_stopper(val_f1, model)
         if early_stopper.early_stop:
-            print(f"Early stopping at epoch {epoch}")
             break
 
+    if early_stopper.early_stop: print(f"Early stopping at epoch {epoch}")
+    
     # 7) Save & plot
     os.makedirs(args.plots_root, exist_ok=True)
-    plotter.plot(save_path=os.path.join(args.plots_root, f"{args.model}_{args.num_classes}classes_{train_loader.dataset[0].num_node_features}features.png"))
+
+    # Build a filename that encodes all CLI arguments + model specs
+    parts = [
+        args.model,
+        f"bs{args.batch_size}",
+        f"sampler{int(args.use_sampler)}",
+        f"wloss{int(args.use_wloss)}",
+        f"epochs{args.epochs}",
+        f"lr{args.lr:.0e}",               # scientific notation
+        f"loss{args.loss}",
+        f"pat{args.patience}",
+        f"sp{args.sampler_power}",
+        f"seed{args.seed}",
+        f"cls{len(class_weights)}"
+    ]
+    filename = "_".join(parts) + ".png"
+
+    save_path = os.path.join(args.plots_root, filename)
+    plotter.plot(save_path=save_path)
 
     # 8) Final test eval
-    te_loss, te_acc, te_prec, te_rec, te_f1 = eval_step(model, test_loader, loss_fn, device)
-    print(f"\nTest: L {te_loss:.4f}, A {te_acc:.4f}, P {te_prec:.4f}, R {te_rec:.4f}, F1 {te_f1:.4f}")
+    test_loss, test_acc, test_prec, test_rec, test_f1, test_y, test_y_pred = eval_step(model, test_loader, loss_fn, device)
+    # print(f"\nTest: L {test_loss:.4f}, A {test_acc:.4f}, P {test_prec:.4f}, R {test_rec:.4f}, F1 {test_f1:.4f}")
+    print(classification_report(
+        test_y, test_y_pred,
+        target_names=['HC','MCI & AD'],
+        digits=3,
+        zero_division=0
+        ))
 
 if __name__ == '__main__':
     main()
