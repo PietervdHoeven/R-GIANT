@@ -23,14 +23,6 @@ MODEL_FACTORY = {
 }
 
 # ──────────────────────────────────────────────────────────────
-# Loss factory
-# ──────────────────────────────────────────────────────────────
-LOSS_FACTORY = {
-    'ce':   CrossEntropyLoss,
-    'bce':  BCEWithLogitsLoss,
-}
-
-# ──────────────────────────────────────────────────────────────
 # Argument parser
 # ──────────────────────────────────────────────────────────────
 def get_args():
@@ -44,7 +36,6 @@ def get_args():
     # Training hyperparams  
     p.add_argument('--epochs',          type=int,  default=100)
     p.add_argument('--lr',              type=float,default=1e-4)
-    p.add_argument('--loss',            choices=LOSS_FACTORY, default='ce')
     p.add_argument('--patience',        type=int,  default=10)
     p.add_argument('--sampler-power',   type=float,default=1.0)
     # Misc  
@@ -87,30 +78,50 @@ def eval_step(model, loader, loss_fn, device):
 
     total_loss = 0
     correct = 0
-    all_preds = []
-    all_labels = []
+    y_pred = []
+    y_true = []
 
     for data in loader:
         data = data.to(device)
 
-        out = model(data.x, data.edge_index, batch=data.batch)
-        loss = loss_fn(out, data.y if out.dim()>1 else data.y.float())
-        total_loss += loss.item() * data.num_graphs
-        pred = out.argmax(dim=1) if out.dim()>1 else (torch.sigmoid(out)>0.5).long()
+        out = model(data.x, data.edge_index, batch=data.batch)  # [B, num_classes]
+        loss = loss_fn(out, data.y)                             # Mean loss per graph over the epoch
+        total_loss += loss.item() * data.num_graphs             # We multiply by num graphs in batch to recover total loss again
 
-        correct   += (pred == data.y).sum().item()
-        all_preds.append(pred.cpu()); all_labels.append(data.y.cpu())
+        pred = out.argmax(dim=1)                                # [B]
+        correct += (pred == data.y).sum().item()                # sum all bools at indices where prediction was correct
 
-    all_preds   = torch.cat(all_preds)
-    all_labels  = torch.cat(all_labels)
+        y_pred.append(pred.cpu())
+        y_true.append(data.y.cpu())
 
-    avg_loss    = total_loss/len(loader.dataset)
-    accuracy    = correct/len(loader.dataset)
-    precision   = precision_score(all_labels, all_preds, average='macro', zero_division=0)
-    recall      = recall_score(all_labels, all_preds, average='macro', zero_division=0)
-    f1          = f1_score(all_labels, all_preds, average='macro', zero_division=0)
+    y_pred = torch.cat(y_pred).numpy()  # [B * num_batches] 1D
+    y_true = torch.cat(y_true).numpy()
 
-    return avg_loss, accuracy, precision, recall, f1, all_labels, all_preds
+    # overall metrics
+    avg_loss = total_loss / len(loader.dataset)
+    acc      = correct    / len(loader.dataset)
+
+    # per-class arrays
+    per_p = precision_score(y_true, y_pred, average=None, zero_division=0)  # [num_classes]
+    per_r = recall_score   (y_true, y_pred, average=None, zero_division=0)
+    per_f = f1_score       (y_true, y_pred, average=None, zero_division=0)
+
+    # macro & weighted
+    mac_p = precision_score(y_true, y_pred, average="macro",   zero_division=0)     # scalar
+    mac_r = recall_score   (y_true, y_pred, average="macro",   zero_division=0)
+    mac_f = f1_score       (y_true, y_pred, average="macro",   zero_division=0)
+
+    wtd_p = precision_score(y_true, y_pred, average="weighted",zero_division=0)     # scalar
+    wtd_r = recall_score   (y_true, y_pred, average="weighted",zero_division=0)
+    wtd_f = f1_score       (y_true, y_pred, average="weighted",zero_division=0)
+
+    return {
+        'loss':    avg_loss, 'acc': acc,
+        'per_p':   per_p,    'per_r': per_r,    'per_f': per_f,
+        'mac_p':   mac_p,    'mac_r': mac_r,    'mac_f': mac_f,
+        'wtd_p':   wtd_p,    'wtd_r': wtd_r,    'wtd_f': wtd_f,
+        'y_true':  y_true,   'y_pred': y_pred
+    }
 
 # ──────────────────────────────────────────────────────────────
 # Main orchestration
@@ -119,8 +130,10 @@ def main():
     args = get_args()
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
+
     # 1) Reproducibility
     set_seed(args.seed)
+
 
     # 2) Data loaders
     loaders = make_split_loaders(
@@ -134,36 +147,51 @@ def main():
     test_loader     = loaders['test_loader']
     class_weights   = loaders['class_weights'].to(device)
 
+
     # 3) Model
+    num_classes = len(class_weights)
+    num_node_features = train_loader.dataset[0].num_node_features
+
     ModelClass = MODEL_FACTORY[args.model]
     model = ModelClass(
-        in_node_feats=train_loader.dataset[0].num_node_features,
-        num_classes=len(class_weights)
+        in_node_feats=num_node_features,
+        num_classes=num_classes
     ).to(device)
 
+
     # 4) Loss + optimizer
-    LossClass = LOSS_FACTORY[args.loss]
-    if args.loss == 'ce':
-        if args.use_sampler or not args.use_wloss:
-            loss_fn = LossClass()
-        else:
-            loss_fn = LossClass(weight=class_weights)
+    if args.use_wloss:
+        loss_fn = CrossEntropyLoss(weight=class_weights)
     else:
-        if args.use_sampler or not args.use_wloss:
-            loss_fn = LossClass()
-        else:
-            # assume BCEWithLogitsLoss; pos_weight = w_pos/w_neg
-            pos_weight = class_weights[1]/class_weights[0]
-            loss_fn = LossClass(pos_weight=pos_weight)
+        loss_fn = CrossEntropyLoss()
+
     optimizer = Adam(model.parameters(), lr=args.lr)
 
-    # 5) Early stopping & plotting
-    early_stopper = EarlyStopping(patience=args.patience, mode='max')
-    plotter = LearningCurvePlotter(metrics_to_track=[
-        'train_loss','train_acc','val_loss','val_acc',
-        'val_precision','val_recall','val_f1'
-    ])
 
+    # 5) Early stopping & plotting
+    # build a dynamic list of metrics to track
+    metrics = [
+        'train_loss', 'val_loss',
+        'train_acc',  'val_acc',
+    ]
+
+    # for each class, add per‐class precision, recall & f1 (only val side here)
+    for i in range(num_classes):
+        metrics += [
+            f"val_per_p_{i}",
+            f"val_per_r_{i}",
+            f"val_per_f_{i}",
+        ]
+
+    # then add the aggregated metrics
+    metrics += [
+        f"val_macro_p",
+        f"val_macro_r",
+        f"val_macro_f",
+    ]
+
+    plotter = LearningCurvePlotter(metrics_to_track=metrics)
+    early_stopper = EarlyStopping(patience=args.patience, mode='max')
 
     # 6) Training loop
     # Wrap epoch loop to handle verbose OR tqdm process bar
@@ -176,28 +204,45 @@ def main():
     # Loop over all epochs
     for epoch in epoch_iterator:
         train_loss, train_acc = train_step(model, train_loader, optimizer, loss_fn, device)
-        val_loss, val_acc, val_prec, val_rec, val_f1, val_y, val_y_pred = eval_step(model, val_loader, loss_fn, device)
+        val = eval_step(model, val_loader, loss_fn, device)
+        # unpack a few for convenience
+        val_loss, val_acc = val['loss'], val['acc']
 
         if args.verbose:
-            # print(f"Epoch {epoch}/{args.epochs} "
-            #     f"- Train: L {train_loss:.4f}, A {train_acc:.4f} "
-            #     f"- Val: L {val_loss:.4f}, A {val_acc:.4f}, P {val_prec:.4f}, R {val_rec:.4f}, F1 {val_f1:.4f}")
-            
-            print(f"\nEpoch {epoch}/{args.epochs} validation classification report:")
-            print(classification_report(
-                val_y, val_y_pred,
-                target_names=['HC','MCI & AD'],
-                digits=3,
-                zero_division=0
-                ))
+            print(f"Epoch {epoch}/{args.epochs} "
+                f"- Train: L {train_loss:.4f}, A {train_acc:.4f} "
+                f"- Val: L {val_loss:.4f}, A {val_acc:.4f}")#, P {val_prec:.4f}, R {val_rec:.4f}, F1 {val_f1:.4f}")
+        
+        log_kwargs = {
+        'train_loss': train_loss,
+        'train_acc':  train_acc,
+        'val_loss':   val_loss,
+        'val_acc':    val_acc,
+        }
 
-        plotter.log(
-            train_loss=train_loss, train_acc=train_acc,
-            val_loss=val_loss,   val_acc=val_acc,
-            val_precision=val_prec, val_recall=val_rec, val_f1=val_f1
-        )
+        # per‐class precision/recall/f1
+        for i in range(num_classes):
+            log_kwargs[f"val_per_p_{i}"] = val['per_p'][i]
+            log_kwargs[f"val_per_r_{i}"] = val['per_r'][i]
+            log_kwargs[f"val_per_f_{i}"] = val['per_f'][i]
 
-        early_stopper(val_f1, model)
+        # macro‐averaged
+        log_kwargs.update({
+            'val_macro_p': val['mac_p'],
+            'val_macro_r': val['mac_r'],
+            'val_macro_f': val['mac_f'],
+        })
+        # # weighted‐averaged
+        # log_kwargs.update({
+        #     'val_wtd_p': val['wtd_p'],
+        #     'val_wtd_r': val['wtd_r'],
+        #     'val_wtd_f': val['wtd_f'],
+        # })
+
+        # 5) Log everything
+        plotter.log(**log_kwargs)
+
+        early_stopper(val['mac_f'], model)
         if early_stopper.early_stop:
             break
 
@@ -214,7 +259,6 @@ def main():
         f"wloss{int(args.use_wloss)}",
         f"epochs{args.epochs}",
         f"lr{args.lr:.0e}",               # scientific notation
-        f"loss{args.loss}",
         f"pat{args.patience}",
         f"sp{args.sampler_power}",
         f"seed{args.seed}",
@@ -225,15 +269,15 @@ def main():
     save_path = os.path.join(args.plots_root, filename)
     plotter.plot(save_path=save_path)
 
-    # 8) Final test eval
-    test_loss, test_acc, test_prec, test_rec, test_f1, test_y, test_y_pred = eval_step(model, test_loader, loss_fn, device)
-    # print(f"\nTest: L {test_loss:.4f}, A {test_acc:.4f}, P {test_prec:.4f}, R {test_rec:.4f}, F1 {test_f1:.4f}")
-    print(classification_report(
-        test_y, test_y_pred,
-        target_names=['HC','MCI & AD'],
-        digits=3,
-        zero_division=0
-        ))
+    # # 8) Final test eval
+    # test_loss, test_acc, test_prec, test_rec, test_f1, test_y, test_y_pred = eval_step(model, test_loader, loss_fn, device)
+    # # print(f"\nTest: L {test_loss:.4f}, A {test_acc:.4f}, P {test_prec:.4f}, R {test_rec:.4f}, F1 {test_f1:.4f}")
+    # print(classification_report(
+    #     test_y, test_y_pred,
+    #     target_names=['HC','MCI & AD'],
+    #     digits=3,
+    #     zero_division=0
+    #     ))
 
 if __name__ == '__main__':
     main()

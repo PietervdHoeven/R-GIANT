@@ -54,19 +54,22 @@ class LearningCurvePlotter:
     def __init__(self, metrics_to_track=None):
         """
         metrics_to_track: list of str, e.g.
-          ['train_loss', 'val_loss', 'train_acc', 'val_acc', 'train_precision', 'val_precision']
+        ['train_loss',      'val_loss',         'train_acc',        'val_acc',
+        'val_per_p_{i}',    'val_per_r_{i}',    'val_per_f_{i}',
+        'val_mac_p',        'val_mac_r',        'val_mac_f',
+        'val_wtd_p',        'val_wtd_r',        'val_wtd_f']
         """
-        self.history = {}
-        self.metrics = metrics_to_track or []
+        self.history = {}   # Init empty dict to store histories per metric
+        self.metrics = metrics_to_track  # Save metrics to track
         for metric in self.metrics:
-            self.history[metric] = []
+            self.history[metric] = []   # init empty list per metric to store historical values in
 
     def log(self, **kwargs):
         """
         Log values via keyword args. Only metrics in metrics_to_track are recorded.
         E.g. plotter.log(train_loss=..., val_loss=..., val_acc=...)
         """
-        for key, value in kwargs.items():
+        for key, value in kwargs.items():   # update all the histories of each metric in kwargs
             if key in self.history:
                 self.history[key].append(value)
 
@@ -76,15 +79,16 @@ class LearningCurvePlotter:
         - save_path: if provided, saves figure to this path instead of showing.
         - max_cols: maximum subplots per row.
         """
-        # Determine base metrics (everything after 'train_' or 'val_')
-        bases = []
-        for m in self.metrics:
-            if '_' in m:
-                base = m.split('_', 1)[1]
-                if base not in bases:
-                    bases.append(base)
-            else:
-                bases.append(m)
+        print(self.metrics)
+        # identify distinct metric‐types (everything after prefix_)
+        bases = list({(parts[1].split('_')[1] if '_' in parts[1] else parts[1])
+                        for parts in (m.split('_', 1) for m in self.metrics)
+                        })
+        prio = ['loss', 'acc']
+        head = [b for b in prio if b in bases]
+        tail = [b for b in bases if b not in prio]
+        bases = head + tail
+        print(bases)
 
         n_plots = len(bases)
         if n_plots == 0:
@@ -103,22 +107,21 @@ class LearningCurvePlotter:
 
         for idx, base in enumerate(bases):
             ax = axes[idx]
-            for prefix in ('train', 'val'):
-                key = f"{prefix}_{base}"
-                if key in self.history and self.history[key]:
+            for key in self.metrics:
+                if base in key.split('_'):
                     ax.plot(
-                        range(1, len(self.history[key]) + 1),
+                        range(1, len(self.history[key])+1),
                         self.history[key],
-                        label=prefix
+                        label=key
                     )
-            ax.set_title(base.replace('_', ' ').title())
+
+            ax.set_title(base.replace('_',' ').title())
             ax.set_xlabel('Epoch')
-            ax.set_ylabel(base.replace('_', ' ').title())
+            ax.set_ylabel(base.title())
             ax.legend()
             ax.grid(True)
-
             if base != 'loss':
-                ax.set_ylim(0.0, 1.0)
+                ax.set_ylim(0,1)
 
         # hide any unused subplots
         for j in range(idx + 1, len(axes)):
