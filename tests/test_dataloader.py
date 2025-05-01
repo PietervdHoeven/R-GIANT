@@ -221,7 +221,7 @@ def test_normalised_dataset():
         ax.axis("off")
 
     plt.tight_layout()
-    plt.show()
+    #plt.show()
 
     print("Normalized dataset tests passed.")
 

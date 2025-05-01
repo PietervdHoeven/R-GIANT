@@ -2,14 +2,14 @@
 import numpy as np
 import torch
 from torch_geometric.data import InMemoryDataset
-from torch.utils.data import DataLoader, Subset
+from torch_geometric.loader import DataLoader
+from torch.utils.data import Subset
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.utils.class_weight import compute_class_weight
 
 # Import your graph dataset class and normalization transforms
 from rgiant.data.dataset import ConnectomeDataset
-from rgiant.data.transforms import get_zscore_transform
-from rgiant.utils.loading import load_config
+from rgiant.data.transforms import get_transforms
 
 
 
@@ -18,6 +18,7 @@ def compute_weights(labels: np.ndarray) -> torch.Tensor:
     Compute class weights for imbalanced classification.
     """
     classes = np.unique(labels)
+    print(f"classes: {classes}")
     weights = compute_class_weight('balanced', classes=classes, y=labels)
     return torch.tensor(weights, dtype=torch.float)
 
@@ -29,10 +30,10 @@ def make_split_loaders(
     val_size: float = 0.1,
     test_size: float = 0.1,
     random_state: int = 19,
-    num_workers: int = 15,
+    num_workers: int = 0,
     pin_memory: bool = True,
     persistent_workers: bool = True,
-    prefetch_factor: int = 2
+    prefetch_factor: int = None
 ):
     """
     Create train/val/test DataLoaders with a pre_transform based on train-set stats.
@@ -65,14 +66,15 @@ def make_split_loaders(
 
     # 3) Calculate the transformation function by passing the dataset and letting transforms.py calculate behind the scenes
     raw_subset = Subset(raw_dataset, idx_train) # Pass only the training part of the raw data to determine the transformation function
-    pre_transform = get_zscore_transform(dataset=raw_subset)   # We therefore determine how to normalise by only looking at the training data
+    pre_transform = get_transforms(dataset=raw_subset)   # We therefore determine how to normalise by only looking at the training data
 
     # 4) Reinstantiate dataset with pre_transform applied at processing
     normalised_dataset = ConnectomeDataset(
         root=dataset_root,
         processed_filename="normalised_graphs.pt",
         transform=None,
-        pre_transform=pre_transform
+        pre_transform=pre_transform,
+        force_reload=True
     )
 
     # 5) Then take subsets determined by the splits we made earlier
@@ -88,9 +90,9 @@ def make_split_loaders(
         persistent_workers=persistent_workers,
         prefetch_factor=prefetch_factor
     )
-    train_loader = DataLoader(train_ds, shuffle=True, **dl_kwargs)  # We only shuffle the train_loader so that training is more random
-    val_loader   = DataLoader(val_ds, shuffle=False, **dl_kwargs)
-    test_loader  = DataLoader(test_ds, shuffle=False, **dl_kwargs)
+    train_loader = DataLoader(train_ds, shuffle=True, batch_size=batch_size)  # We only shuffle the train_loader so that training is more random
+    val_loader   = DataLoader(val_ds, shuffle=False, batch_size=batch_size)
+    test_loader  = DataLoader(test_ds, shuffle=False, batch_size=batch_size)
 
     # 7) Compute class weights on train labels
     class_weights = compute_weights(y_train)    # These are necessary for us to alter the loss function to manage the class inbalance

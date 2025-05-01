@@ -88,8 +88,6 @@ def build_pyg_data(patient_id, session_id, data_dir, label=None):
     As = np.load(As_path)  
     X = np.load(X_path)
 
-    for k in sorted(As.files):
-        print(k)
     # Load the individual adjacency matrices into tensors and store them in a list of tensors list[tensor[N,N]]
     # sort keys to fix metric order (e.g. [FA, MD, RD, AD, LEN, COUNT] -> ad count fa length md norm_count rd
     As = [torch.tensor(As[k], dtype=torch.float32) for k in sorted(As.files)]
@@ -125,7 +123,7 @@ def build_pyg_data(patient_id, session_id, data_dir, label=None):
     data.id = f"{patient_id}_{session_id}"
 
     # Save the graph
-    #torch.save(data, f"{data_dir}/graphs/{patient_id}_{session_id}_G.pt")
+    torch.save(data, f"{data_dir}/graphs/{patient_id}_{session_id}_G.pt")
 
 
 

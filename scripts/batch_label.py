@@ -3,9 +3,9 @@ import csv
 import os
 import torch
 # Path to your CSV
-labels_dir = r'c:\Users\piete\Documents\Development\Projects\R-GIANT\data\connectome_pipeline\labels.csv'
-graphs_dir = r'c:\Users\piete\Documents\Development\Projects\R-GIANT\data\connectome_pipeline\graphs'
-labeled_graphs_dir = r'c:\Users\piete\Documents\Development\Projects\R-GIANT\data\connectome_pipeline\binary_graphs'
+labels_dir = 'C:/Users/piete/Documents/Development/Projects/R-GIANT/data/deeplearning_datasets/labels.csv'
+graphs_dir = 'C:/Users/piete/Documents/Development/Projects/R-GIANT/data/deeplearning_datasets/graphs no-PET no-label/raw'
+labeled_graphs_dir = 'C:/Users/piete/Documents/Development/Projects/R-GIANT/data/deeplearning_datasets/graphs no-PET bi-label/raw'
 os.makedirs(labeled_graphs_dir, exist_ok=True)
 
 with open(labels_dir, newline='') as csvfile:

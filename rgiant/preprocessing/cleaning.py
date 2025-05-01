@@ -12,7 +12,7 @@ from nibabel.processing import resample_from_to, resample_to_output
 from nibabel.funcs import as_closest_canonical
 from scipy.io import loadmat
 from dipy.core.gradients import reorient_bvecs, gradient_table
-from rgiant.utils.logging import setup_logger
+from rgiant.preprocessing.utils.logging import setup_logger
 
 
 def load_data(paths: dict) -> tuple[nib.Nifti1Image, nib.Nifti1Image, np.ndarray, np.ndarray, int]:

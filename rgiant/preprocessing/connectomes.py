@@ -5,8 +5,8 @@ import os
 import numpy as np
 import nibabel as nib
 import matplotlib.pyplot as plt
-from rgiant.utils.loading import load_special_fs_labels, load_parcellation_mappings
-from rgiant.utils.logging import setup_logger
+from rgiant.preprocessing.utils.loading import load_special_fs_labels, load_parcellation_mappings
+from rgiant.preprocessing.utils.logging import setup_logger
 from scipy.ndimage import binary_dilation
 from dipy.core.gradients import gradient_table
 from dipy.io.gradients import read_bvals_bvecs

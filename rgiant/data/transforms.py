@@ -23,7 +23,6 @@ def get_transforms(
     # -------------------Normalising the edge attributes----------------------------
     # Initialise containers ready for saving the computed zscoring metrics
     num_features = len(diff_cols) + len(fl_cols) + len(count_cols) + len(rel_count_cols)
-    print(num_features)
 
     # Prepare empty containers for mean/std/quantiles across all features
     edge_means = np.zeros(num_features, dtype=np.float32)
@@ -69,7 +68,7 @@ def get_transforms(
 
     # -----------------------Normalising the node features------------------------
     # Compute the stats necessary for initialising the node feature normalisation class
-    node_means, node_stds = compute_node_stats(dataset=dataset)
+    node_means, node_stds = compute_node_stats(dataset=dataset, one_hot_dims=one_hot_dims)
 
 
     # Final Compose pipeline
@@ -241,7 +240,7 @@ def compute_node_stats(
     # Replace nans with neutral values
     means = np.nan_to_num(means, nan=0.0)
     stds = np.nan_to_num(stds, nan=1.0)
-    
+
     return means, stds
 
 

@@ -24,5 +24,6 @@ for label in labels:
         session_id=session_id,
         data_dir=data_dir,
         mappings=mappings,
-        special_labels=special_labels
+        special_labels=special_labels,
+        has_pib=False
     )

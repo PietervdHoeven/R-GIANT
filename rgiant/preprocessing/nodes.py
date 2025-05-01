@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import re
-from rgiant.utils.loading import load_parcellation_mappings, load_special_fs_labels
+from rgiant.preprocessing.utils.loading import load_parcellation_mappings, load_special_fs_labels
 
 def parse_aseg_stats(aseg_path: str):
     """
@@ -78,7 +78,7 @@ def encode_sub_ctx_features(X: np.array, aseg_stats: list[dict], fs_idxs2graph_i
             else:
                 X[idx, 0] = 1  # index 0=True iff sub-ctx-struct is normal
             X[idx, 3] = row["Volume_mm3"]  # Volume_mm3
-    X[:, 10] = aseg_stats[0]["eTIV"]
+    X[:, 4] = aseg_stats[0]["eTIV"]
     return X
 
 
@@ -142,11 +142,11 @@ def encode_ctx_features(X: np.array, aparc_stats: list[dict], fs_names2graph_idx
         if fs_name in fs_names2graph_idxs:
             idx = fs_names2graph_idxs[fs_name] - 1 # -1 for 0-based indexing
             X[idx, 1] = 1 # index 1=True iff it is a cortical structure
-            X[idx, 4] = row["SurfArea"]
-            X[idx, 5] = row["GrayVol"]
-            X[idx, 6] = row["ThickAvg"]
-            X[idx, 7] = row["ThickStd"]
-            X[idx, 8] = row["MeanCurv"]
+            X[idx, 5] = row["SurfArea"]
+            X[idx, 6] = row["GrayVol"]
+            X[idx, 7] = row["ThickAvg"]
+            X[idx, 8] = row["ThickStd"]
+            X[idx, 9] = row["MeanCurv"]
     return X
 
 
@@ -188,7 +188,7 @@ def encode_pup_features(X: np.array, suvr_values: dict, fs_names2graph_idxs: dic
     for roi, value in suvr_values.items():
         if roi in fs_names2graph_idxs:
             idx = fs_names2graph_idxs[roi] - 1 # -1 for 0-based indexing
-            X[idx, 9] = value  # PIB-SUVR
+            X[idx, 10] = value  # PIB-SUVR
     return X
 
 
@@ -198,7 +198,8 @@ def extract_node_features(
         session_id: str,
         data_dir: str,
         mappings: dict = None,
-        special_labels: dict = None
+        special_labels: dict = None,
+        has_pib: bool = True
 ):
     """
     Extract node features from FreeSurfer segmentation stats and save them to a numpy file.
@@ -226,19 +227,19 @@ def extract_node_features(
         - The matrix is printed to the console for verification.
 
     Node Feature Matrix (X):
-        - Shape: (n_nodes, 9)
+        - Shape: (n_nodes, 11)
         - Columns:
             0: is_sub_ctx (1 if sub-cortical structure, 0 otherwise)
             1: is_ctx (1 if cortical structure, 0 otherwise)
             2: is_fluid (1 if fluid compartment, 0 otherwise)
             3: Volume_mm3 (FreeSurfer (FS): sub-cortical ROI volume
-            4: SurfArea (FS: cortical surface area)
-            5: GrayVol (FS: cortical gray matter volume)
-            6: ThickAvg (FS: cortical ROI average thickness)
-            7: ThickStd (FS: thickness standard deviation)
-            8: MeanCurv (FS: Cortical ROI mean curvature)
-            9: PIB-SUVR (PET Unified Pipeline (PUP): Pitssburgh Compound-B standardized uptake value ratio)
-            10: eTIV (FS: estimated Total Intracranial Volume)
+            4: eTIV (FS: estimated Total Intracranial Volume)
+            5: SurfArea (FS: cortical surface area)
+            6: GrayVol (FS: cortical gray matter volume)
+            7: ThickAvg (FS: cortical ROI average thickness)
+            8: ThickStd (FS: thickness standard deviation)
+            9: MeanCurv (FS: Cortical ROI mean curvature)
+            10: PIB-SUVR (PET Unified Pipeline (PUP): Pitssburgh Compound-B standardized uptake value ratio)
 
     """
     if mappings == None:
@@ -254,7 +255,10 @@ def extract_node_features(
     
     # Build empty feature matrix with shape (n_nodes, n_features)
     n_nodes = len(fs_idxs2graph_idxs)
-    n_features = 11 # is_sub-ctx, is_ctx, is_fluid, Volume_mm3, SurfArea, GrayVol, ThickAvg, ThickStd, MeanCurv, PIB-SUVR, AV45-SUVR
+    if has_pib:
+        n_features = 11
+    else:
+        n_features = 10
     X = np.zeros((n_nodes, n_features))
 
     # Load parcellation label mappings
@@ -281,7 +285,8 @@ def extract_node_features(
         fs_names2graph_idxs=fs_names2graph_idxs
         )
     
-    X = encode_pup_features(X, suvr_values, fs_names2graph_idxs)
+    if has_pib:
+        X = encode_pup_features(X, suvr_values, fs_names2graph_idxs)
 
     # Print the first 5 rows of the node feature matrix X for inspection
     # print("First 5 rows of the node feature matrix X:")

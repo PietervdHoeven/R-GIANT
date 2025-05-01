@@ -27,7 +27,7 @@ def load_patient_session_ids():
     
     The JSON file should be an array of objects with "patient_id" and "session_id" keys.
     """
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]  # go 2 levels up from /parent/child/script.py
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]  # go 2 levels up from /parent/child/script.py
     SESSIONS_FILE = PROJECT_ROOT / "data" / "sessions.json"
     with open(SESSIONS_FILE, 'r') as f:
         sessions = json.load(f)

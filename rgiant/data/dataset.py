@@ -48,6 +48,7 @@ class ConnectomeDataset(InMemoryDataset):
         """
         graph_list = []
         # adjust the pattern if your PT files live in subfolders
+        print(self.raw_dir)
         for pt_path in glob.glob(os.path.join(self.raw_dir, "*_G.pt")):
             g = torch.load(pt_path)
             if self.pre_transform:
